@@ -1,6 +1,7 @@
 //! Serializable data model: apps, actions, settings, groups, and window state.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -293,6 +294,24 @@ impl Default for DefaultRetention {
             build_run: Retention::default_for(ActionKind::BuildRun),
             custom: Retention::default_for(ActionKind::Custom),
         }
+    }
+}
+
+/// Where the data folder is, stored in `meta/data-location.json` of the default data folder
+/// next to the executable, so it can be read before the data folder itself is opened.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DataLocation {
+    /// Use `path` instead of the default data folder (e.g. a folder inside a Git repository).
+    pub custom: bool,
+    /// The chosen data folder; ignored while `custom` is off.
+    pub path: Option<PathBuf>,
+}
+
+impl DataLocation {
+    /// The data folder to use, or `None` for the default one.
+    pub fn custom_root(&self) -> Option<&Path> {
+        self.path.as_deref().filter(|_| self.custom)
     }
 }
 

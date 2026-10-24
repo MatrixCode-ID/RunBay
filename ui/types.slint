@@ -22,6 +22,8 @@ export struct ActionButton {
     enabled: bool,
     // "running" while one of its runs is active, otherwise "".
     status: string,
+    // The active step is Build or Custom; Run uses a steady lamp instead.
+    busy: bool,
     // The active run was started by an agent.
     agent: bool,
 }
@@ -31,6 +33,7 @@ export struct RunRow {
     run-id: string,
     title: string,
     status: string,
+    busy: bool,
     agent: string,
     time: string,
     selected: bool,
@@ -47,6 +50,7 @@ export struct AppRow {
     group-header: string,
     status: string,
     status-agent: bool,
+    status-busy: bool,
     agent: string,
     error: string,
     build: ActionButton,

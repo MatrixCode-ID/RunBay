@@ -11,6 +11,7 @@ export global MiniBridge {
     in-out property <[OutputRow]> output;
     in-out property <string> output-title;
     in-out property <string> output-status;
+    in-out property <bool> output-busy;
     in-out property <string> output-agent;
     in-out property <string> output-run-id;
     in-out property <string> version;
@@ -66,6 +67,7 @@ component OutputCard inherits Rectangle {
             }
             StatusBadge {
                 status: MiniBridge.output-status;
+                busy: MiniBridge.output-busy;
                 agent: MiniBridge.output-agent != "";
                 y: (parent.height - self.height) / 2;
             }
@@ -134,6 +136,7 @@ component MiniAppRow inherits Rectangle {
                 }
                 StatusBadge {
                     status: app.status;
+                    busy: app.status-busy;
                     agent: app.status-agent;
                     size: 16px;
                     y: (parent.height - self.height) / 2;
@@ -155,6 +158,8 @@ component MiniAppRow inherits Rectangle {
                     enabled: app.build.enabled;
                     style: app.build.status == "running" ? (app.build.agent ? "tertiary" : "filled") : "standard";
                     agent: app.build.agent;
+                    status: app.build.status;
+                    busy: app.build.busy;
                     pulse: app.build.agent && app.build.status == "running";
                     clicked => { MiniBridge.run-action(app.id, app.build.id); }
                 }
@@ -166,6 +171,8 @@ component MiniAppRow inherits Rectangle {
                     enabled: app.run.enabled;
                     style: app.run.status == "running" ? (app.run.agent ? "tertiary" : "filled") : "standard";
                     agent: app.run.agent;
+                    status: app.run.status;
+                    busy: app.run.busy;
                     pulse: app.run.agent && app.run.status == "running";
                     clicked => { MiniBridge.run-action(app.id, app.run.id); }
                 }
@@ -177,6 +184,8 @@ component MiniAppRow inherits Rectangle {
                     enabled: app.build-run.enabled;
                     style: app.build-run.status == "running" ? (app.build-run.agent ? "tertiary" : "filled") : "standard";
                     agent: app.build-run.agent;
+                    status: app.build-run.status;
+                    busy: app.build-run.busy;
                     pulse: app.build-run.agent && app.build-run.status == "running";
                     clicked => { MiniBridge.run-action(app.id, app.build-run.id); }
                 }
@@ -391,6 +400,7 @@ export component IconWindow inherits Window {
     in property <bool> pinned: true;
     in property <string> status;
     in property <bool> status-agent;
+    in property <bool> status-busy;
     always-on-top: pinned;
     width: size;
     height: size;
@@ -429,6 +439,7 @@ export component IconWindow inherits Window {
             background: Theme.surface;
             StatusBadge {
                 status: status;
+                busy: status-busy;
                 agent: status-agent;
                 size: parent.width - 2px;
             }

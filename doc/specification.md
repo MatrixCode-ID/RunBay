@@ -46,32 +46,51 @@ and stores the output of every run.
 - **App** — an application registered in RunBay to be built/run.
 - **Action** — a command belonging to an app, backed by a PowerShell script.
 - **Run** — one execution of an action; has output, exit code, duration, and status.
-- **Data folder** — `./data/`, relative to the folder of the RunBay executable.
+- **Data folder** — the folder holding RunBay settings, registered apps, scripts,
+  and history. It defaults to `data/` next to the RunBay executable. Users can
+  choose another folder in Settings, including a folder inside a Git repository.
+  `--data-dir <path>` overrides this choice for that launch (§10).
 
 ## 4. Data folder layout
 
-RunBay's own metadata is kept apart from the data of registered apps.
+RunBay's own metadata is kept apart from the data of registered apps. The active
+data folder has the same layout wherever it is stored. References to `data/`
+elsewhere in this document mean this active folder, except for the location
+pointer, which always stays in the default folder next to the executable.
 
 ```
 <RunBay folder>/
   RunBay.exe
   data/
-    meta/                         ← owned by RunBay itself
-      settings.json               ← mode, theme, always on top, icon size, autostart, …
-      window-state.json           ← position/size per mode, last mode
-      groups.json                 ← groups and their order
-    apps/                         ← registered apps
-      <app-id>/
-        app.json                  ← app definition + list of actions
-        icon.<png|ico|svg>        ← icon asset (optional)
-        actions/
-          <action-id>.ps1         ← script of each action
-        history/
-          index.jsonl             ← one line per run (summary)
-          <yyyy-MM>/
-            <run-id>.log          ← full output of a run
+    meta/
+      data-location.json          ← location pointer; always in this default folder
+
+<active data folder>/             ← defaults to <RunBay folder>/data/
+  meta/                           ← owned by RunBay itself
+    settings.json                 ← mode, theme, always on top, icon size, autostart, …
+    window-state.json             ← position/size per mode, last mode
+    groups.json                   ← groups and their order
+  apps/                           ← registered apps
+    <app-id>/
+      app.json                    ← app definition + list of actions
+      icon.<png|ico|svg>           ← icon asset (optional)
+      actions/
+        <action-id>.ps1           ← script of each action
+      history/
+        index.jsonl               ← one line per run (summary)
+        <yyyy-MM>/
+          <run-id>.log            ← full output of a run
 ```
 
+- `<RunBay folder>/data/meta/data-location.json` stores `custom` (a boolean,
+  default `false`) and `path` (the chosen folder, or `null`). With `custom` off
+  or no path set, RunBay uses the default folder. A missing or corrupted pointer
+  also falls back to the default folder. This pointer is separate from
+  `settings.json`, so both the GUI and MCP bridge can resolve the data folder
+  before opening it.
+- A location change applies after RunBay restarts. The current session keeps
+  using its existing folder, and no data is moved or copied. On the next launch,
+  RunBay opens the selected folder and creates the required directories if needed.
 - `app-id` and `action-id`: unique, stable slugs (e.g. `my-app`, `build`).
   Renaming the display name does not change the id.
 - `run-id`: `yyyyMMdd-HHmmss-<action-id>-<4 hex>`, so ids sort by time.
@@ -192,6 +211,9 @@ future separate record of the skipped part.
   PowerShell process: a run script that starts the application (e.g. with
   `Start-Process`) stays *running* while the application lives, so `whenRunning`
   and Stop apply to it. The exit code is still the one of the script.
+- Build scripts must let their worker processes exit when the build finishes.
+  For .NET actions, use `dotnet build --disable-build-servers` to avoid persistent
+  compiler/MSBuild servers keeping an otherwise completed build marked *running*.
 - No console window is shown (`CREATE_NO_WINDOW`).
 - Output is decoded as UTF-8; RunBay sets `[Console]::OutputEncoding` to UTF-8
   through a startup argument so pwsh and 5.1 output is consistent.
@@ -224,9 +246,23 @@ Different apps may always run in parallel.
 
 ### 5.4 Status badges
 
-Each app shows a badge for its last run: running (animated), success, failed,
-stopped. The same badge appears on the tray icon and the floating icon
-(aggregated: running > failed > success).
+Each active Build or Custom action shows a spinner. An active Run action shows
+a steady green lamp while the application is alive, with no looping animation.
+Build + Run shows a spinner during its Build step and switches to the steady
+lamp only after a successful build enters its Run step. A failed build never
+lights the Run lamp.
+
+The same distinction appears on action buttons, app cards, navigation run rows,
+output tabs and headers, Action History, and Compact/Icon output popups. Agent
+actions retain their tertiary accent and agent markers. When several runs are
+active, each action keeps its own indicator; an app's overall badge shows the
+spinner while any Build/Custom step is active, then the lamp while only Run steps
+remain. Finished runs keep their success, failed, or stopped icons.
+
+The floating icon uses the same aggregate distinction (active > failed > success,
+with busy work taking precedence over Run lamps). The tray uses static badges:
+blue for busy Build/Custom work and green for active Run steps. Merely keeping an
+application running does not schedule spinner redraws.
 
 ## 6. Display modes
 
@@ -334,6 +370,21 @@ App editor dialog (from Full; Compact/Icon open Full for this):
 | Default `whenRunning` for new actions | Ask |
 | Auto update | On |
 | MCP access (Off / Ask first / Unrestricted) | Ask first |
+| Use another data folder | Off (`data/` next to the executable) |
+
+**Use another data folder** is a checkbox in the **Data** section. Enabling it
+opens a folder picker if no folder has been selected before; cancelling leaves
+the saved choice unchanged. **Choose folder** is available while the checkbox
+is on. Turning the checkbox off selects the default folder again and remembers
+the custom path for later reuse.
+
+The choice is saved immediately to the location pointer in the default data
+folder (§4), and takes effect after a restart. Settings shows the folder in use
+and, when a different folder is pending, the restart requirement and a reminder
+that existing data is not moved. RunBay does not move or copy old data or restart
+automatically. When launched with `--data-dir`, both controls are disabled and
+Settings shows the command-line folder instead. Follow-up ideas for migration,
+restart, and Git ignore rules are tracked in [data-location](ideas/data-location.md).
 
 **Load with Windows** writes a `RunBay` value under
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` holding the executable path
@@ -356,10 +407,16 @@ Only one instance per user. Starting RunBay again focuses the window of the
 running instance and exits. The instance is found through its named pipe, which
 also serves the MCP bridge (§15.1).
 
-Development option: `--data-dir <path>` uses another data folder. Such an instance
-gets its own pipe name (`RunBay-<user SID>-<hash of the folder>`), so a test
-instance and the bridge started with the same option never talk to the user's
-real instance.
+Without `--data-dir`, the GUI and MCP bridge use the folder selected in Settings
+(§8), falling back to the default folder when no custom location is configured.
+This choice keeps the normal per-user pipe name; it does not create a separate
+instance.
+
+Development option: `--data-dir <path>` overrides the saved location for that
+launch. The data location controls in Settings are locked, so a test instance
+cannot change the normal instance's saved location. Such an instance gets its
+own pipe name (`RunBay-<user SID>-<hash of the folder>`), so a test instance and
+the bridge started with the same option never talk to the user's real instance.
 
 ## 11. Non-functional targets
 
@@ -369,7 +426,7 @@ real instance.
 | Idle memory (Icon/Compact mode) | < 30 MB working set |
 | Memory in Full with 10,000 output lines | < 60 MB |
 | Idle CPU | ~0%: no redraw or polling while there is no output |
-| Distribution | A single executable, no installer or extra runtime; the `data/` folder is created automatically |
+| Distribution | A single executable, no installer or extra runtime; the selected data folder (default `data/` next to the executable) is created automatically |
 | Data writes | Atomic; a corrupted data file does not stop the application (that app is marked as errored) |
 
 Process output is batched to the UI (e.g. every 50 ms) so heavy output does not
@@ -392,6 +449,10 @@ overload rendering.
   About dialog.
 - Console output uses a monospace font (Cascadia Mono when available, falling
   back to Consolas).
+- Button and connected-agent tooltips appear after a short hover delay in a
+  popup above the surrounding content, so app cards and scroll views cannot
+  cover or clip them. They use the inverse surface colors and disappear when
+  the pointer leaves their target.
 - The "Made with Slint" attribution is shown in the About dialog, as required by
   Slint's royalty-free license.
 

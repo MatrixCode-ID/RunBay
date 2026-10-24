@@ -69,6 +69,8 @@ pub struct RunInfo {
     pub action_name: String,
     /// Action kind.
     pub kind: ActionKind,
+    /// Current execution step; Build + Run changes from Build to Run after a successful build.
+    pub phase: ActionKind,
     /// Run id.
     pub run_id: String,
     /// Status.
@@ -88,6 +90,11 @@ pub struct RunInfo {
 }
 
 impl RunInfo {
+    /// Whether an active run is doing work that should show a spinner instead of a run lamp.
+    pub fn is_busy(&self) -> bool {
+        self.status == RunStatus::Running && self.phase != ActionKind::Run
+    }
+
     fn record(&self, history: &History) -> RunRecord {
         RunRecord {
             run_id: self.run_id.clone(),
@@ -119,6 +126,8 @@ impl RunInfo {
 pub enum RunEvent {
     /// A run started.
     Started(RunInfo),
+    /// The execution moved to another step, such as Build + Run entering its Run step.
+    PhaseChanged(RunInfo),
     /// New output lines (batched).
     Output {
         /// App id.
@@ -498,6 +507,11 @@ impl RunManager {
             action_id: action.id.clone(),
             action_name: action.name.clone(),
             kind: action.kind,
+            phase: if action.kind == ActionKind::BuildRun {
+                ActionKind::Build
+            } else {
+                action.kind
+            },
             run_id,
             status: RunStatus::Running,
             source: request.source,
@@ -646,6 +660,14 @@ impl RunManager {
             }
             if !script.is_file() {
                 bail!("the script \"{}\" does not exist", script.display());
+            }
+            if action.kind == ActionKind::BuildRun && index == 1 {
+                let info = {
+                    let mut info = run.0.info.lock().unwrap();
+                    info.phase = ActionKind::Run;
+                    info.clone()
+                };
+                self.emit(&RunEvent::PhaseChanged(info));
             }
             if sections {
                 sink.line(OutputLine::out(format!("── {name} ──")));

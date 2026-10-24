@@ -85,6 +85,7 @@ pub fn run_row(info: &RunInfo, displayed: Option<&str>, tab: bool) -> RunRow {
         }
         .into(),
         status: info.status.as_str().into(),
+        busy: info.is_busy(),
         agent: info.agent.clone().unwrap_or_default().into(),
         time: time_label(&info.start).into(),
         selected: displayed == Some(info.run_id.as_str()),
@@ -97,6 +98,7 @@ pub fn record_row(record: &RunRecord, action_name: &str, displayed: Option<&str>
         run_id: record.run_id.clone().into(),
         title: action_name.into(),
         status: record.status.as_str().into(),
+        busy: false,
         agent: record.agent.clone().unwrap_or_default().into(),
         time: time_label(&record.start).into(),
         selected: displayed == Some(record.run_id.as_str()),

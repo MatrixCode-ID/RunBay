@@ -2,6 +2,67 @@
 
 import { Theme, Icons } from "theme.slint";
 
+// Content for Tooltip popups; the popup keeps it above surrounding UI and clipping.
+export component TooltipContent inherits Rectangle {
+    in property <string> text;
+    border-radius: 4px;
+    background: Theme.inverse-surface;
+    min-height: 24px;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        Text {
+            text: root.text;
+            color: Theme.inverse-on-surface;
+            font-size: Theme.label-medium;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Active work spins; a running application has a steady lamp. Finished states use icons.
+export component StatusBadge inherits Rectangle {
+    in property <string> status;
+    in property <length> size: 18px;
+    in property <bool> agent;
+    in property <bool> busy;
+    in property <brush> busy-color: agent ? Theme.tertiary : Theme.primary;
+    in property <brush> lamp-color: agent ? Theme.tertiary : Theme.success;
+    in property <color> lamp-outline: Theme.surface;
+    width: status == "" ? 0 : size;
+    height: size;
+    visible: status != "";
+
+    accessible-role: text;
+    accessible-label: status == "running" ? (busy ? "Working" : "Application running") : status;
+
+    if status == "running" && !busy: Rectangle {
+        width: size * 0.6;
+        height: self.width;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: lamp-color;
+        border-width: 1px;
+        border-color: lamp-outline;
+    }
+    if status != "running" || busy: Image {
+        width: size;
+        height: size;
+        source: status == "running" ? Icons.running
+            : status == "success" ? Icons.success
+            : status == "failed" ? Icons.failed
+            : Icons.stopped;
+        colorize: status == "running" ? busy-color
+            : status == "success" ? Theme.success
+            : status == "failed" ? Theme.error
+            : Theme.outline;
+        transform-rotation: status == "running" && busy ? mod(animation-tick() / 1.4ms, 360) * 1deg : 0deg;
+    }
+}
+
 // An icon button with an M3 state layer. `style`: "standard", "tonal", "filled", "tertiary".
 // The shape morphs from a circle to a rounded square while pressed (M3 Expressive).
 export component SymbolButton inherits Rectangle {
@@ -12,6 +73,8 @@ export component SymbolButton inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> active;
     in property <bool> agent;
+    in property <string> status;
+    in property <bool> busy;
     in property <length> size: 36px;
     in property <length> icon-size: 20px;
     in property <brush> icon-color: style == "filled" ? Theme.on-primary
@@ -50,11 +113,22 @@ export component SymbolButton inherits Rectangle {
         padding-right: label == "" ? (size - icon-size) / 2 : 12px;
         spacing: 6px;
         alignment: center;
-        Image {
+        if root.status != "running": Image {
             source: icon;
             width: icon-size;
             height: icon-size;
             colorize: icon-color;
+            y: (parent.height - self.height) / 2;
+        }
+        if root.status == "running": StatusBadge {
+            status: root.status;
+            busy: root.busy;
+            agent: root.agent;
+            busy-color: root.icon-color;
+            lamp-color: root.agent ? root.icon-color : Theme.success;
+            lamp-outline: root.style == "filled" ? Theme.on-primary
+                : root.style == "tertiary" ? Theme.on-tertiary : Theme.surface;
+            size: root.icon-size;
             y: (parent.height - self.height) / 2;
         }
         label-text := Text {
@@ -88,45 +162,10 @@ export component SymbolButton inherits Rectangle {
         clicked => { root.clicked(); }
     }
 
-    if tooltip != "" && touch.has-hover: Rectangle {
-        y: parent.height + 4px;
-        x: (parent.width - tip.preferred-width - 16px) / 2;
-        width: tip.preferred-width + 16px;
-        height: 24px;
-        border-radius: 4px;
-        background: Theme.inverse-surface;
-        tip := Text {
-            text: tooltip;
-            color: Theme.inverse-on-surface;
-            font-size: Theme.label-medium;
+    if tooltip != "" && enabled: Tooltip {
+        TooltipContent {
+            text: root.tooltip;
         }
-    }
-}
-
-// The badge of a run status: running (spinning), success, failed, stopped, skipped.
-export component StatusBadge inherits Rectangle {
-    in property <string> status;
-    in property <length> size: 18px;
-    in property <bool> agent;
-    width: status == "" ? 0 : size;
-    height: size;
-    visible: status != "";
-
-    accessible-role: text;
-    accessible-label: status;
-
-    Image {
-        width: size;
-        height: size;
-        source: status == "running" ? Icons.running
-            : status == "success" ? Icons.success
-            : status == "failed" ? Icons.failed
-            : Icons.stopped;
-        colorize: status == "running" ? (agent ? Theme.tertiary : Theme.primary)
-            : status == "success" ? Theme.success
-            : status == "failed" ? Theme.error
-            : Theme.outline;
-        transform-rotation: status == "running" ? mod(animation-tick() / 1.4ms, 360) * 1deg : 0deg;
     }
 }
 

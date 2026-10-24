@@ -2,7 +2,7 @@
 
 import { ListView, LineEdit, TextEdit, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton } from "components.slint";
+import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, TooltipContent } from "components.slint";
 import { Span, OutputRow, ActionButton, RunRow, AppRow } from "types.slint";
 import { EditorPage, SettingsPage, HistoryFlyout, AboutDialog } from "pages.slint";
 
@@ -106,6 +106,7 @@ component AppCard inherits Rectangle {
             }
             StatusBadge {
                 status: app.status;
+                busy: app.status-busy;
                 agent: app.status-agent;
                 y: (parent.height - self.height) / 2;
             }
@@ -131,6 +132,8 @@ component AppCard inherits Rectangle {
                 style: app.build.status == "running" ? (app.build.agent ? "tertiary" : "filled") : "tonal";
                 enabled: app.build.enabled;
                 agent: app.build.agent;
+                status: app.build.status;
+                busy: app.build.busy;
                 pulse: app.build.agent && app.build.status == "running";
                 size: 32px;
                 clicked => { root.run-action(app.id, app.build.id); }
@@ -141,6 +144,8 @@ component AppCard inherits Rectangle {
                 style: app.run.status == "running" ? (app.run.agent ? "tertiary" : "filled") : "tonal";
                 enabled: app.run.enabled;
                 agent: app.run.agent;
+                status: app.run.status;
+                busy: app.run.busy;
                 pulse: app.run.agent && app.run.status == "running";
                 size: 32px;
                 clicked => { root.run-action(app.id, app.run.id); }
@@ -151,6 +156,8 @@ component AppCard inherits Rectangle {
                 style: app.build-run.status == "running" ? (app.build-run.agent ? "tertiary" : "filled") : "tonal";
                 enabled: app.build-run.enabled;
                 agent: app.build-run.agent;
+                status: app.build-run.status;
+                busy: app.build-run.busy;
                 pulse: app.build-run.agent && app.build-run.status == "running";
                 size: 32px;
                 clicked => { root.run-action(app.id, app.build-run.id); }
@@ -173,6 +180,7 @@ component AppCard inherits Rectangle {
                 spacing: 8px;
                 StatusBadge {
                     status: run.status;
+                    busy: run.busy;
                     agent: run.agent != "";
                     size: 14px;
                     y: (parent.height - self.height) / 2;
@@ -269,6 +277,7 @@ export component MainWindow inherits Window {
     in property <int> output-columns;
     in property <string> output-title;
     in property <string> output-status;
+    in property <bool> output-busy;
     in property <string> output-agent;
     in property <string> output-run-id;
     in property <bool> output-has-log;
@@ -385,18 +394,9 @@ export component MainWindow inherits Window {
                             border-radius: 4px;
                             background: Theme.success;
                         }
-                        agents-touch := TouchArea { }
-                        if agents-touch.has-hover: Rectangle {
-                            x: parent.width - self.width;
-                            y: parent.height + 4px;
-                            width: agents-tip.preferred-width + 16px;
-                            height: 24px;
-                            border-radius: 4px;
-                            background: Theme.inverse-surface;
-                            agents-tip := Text {
-                                text: "Connected: " + agents;
-                                color: Theme.inverse-on-surface;
-                                font-size: Theme.label-medium;
+                        Tooltip {
+                            TooltipContent {
+                                text: "Connected: " + root.agents;
                             }
                         }
                     }
@@ -521,6 +521,7 @@ export component MainWindow inherits Window {
                         spacing: 6px;
                         StatusBadge {
                             status: tab.status;
+                            busy: tab.busy;
                             agent: tab.agent != "";
                             size: 14px;
                             y: (parent.height - self.height) / 2;
@@ -556,6 +557,7 @@ export component MainWindow inherits Window {
                 }
                 StatusBadge {
                     status: output-status;
+                    busy: output-busy;
                     agent: output-agent != "";
                     y: (parent.height - self.height) / 2;
                 }

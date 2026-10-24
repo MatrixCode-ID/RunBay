@@ -199,6 +199,8 @@ struct State {
     confirmations: std::collections::VecDeque<agent::PendingConfirmation>,
     /// Aggregated badge of all apps: running > failed > success.
     aggregate: String,
+    /// At least one active app is building or running a custom action.
+    aggregate_busy: bool,
     /// Connected agents.
     agents: Vec<String>,
     /// The active display mode.
@@ -591,6 +593,7 @@ impl Controller {
                 }
                 self.refresh_nav();
                 self.refresh_header();
+                self.refresh_history();
             }
             RunEvent::Output { run_id, lines, .. } => {
                 if self.state.borrow().displayed.as_deref() == Some(run_id.as_str()) {
@@ -599,6 +602,12 @@ impl Controller {
                 if self.state.borrow().popup.run_id.as_deref() == Some(run_id.as_str()) {
                     self.append_popup_lines(&lines);
                 }
+            }
+            RunEvent::PhaseChanged(_) => {
+                self.refresh_nav();
+                self.refresh_header();
+                self.refresh_popup_header();
+                self.refresh_history();
             }
             RunEvent::Finished(info) => {
                 if info.log_path.is_some() {
@@ -727,6 +736,7 @@ impl Controller {
         };
         ui.set_output_title(title.into());
         ui.set_output_status(status.into());
+        ui.set_output_busy(self.displayed_run().is_some_and(|run| run.info().is_busy()));
         ui.set_output_agent(agent.into());
         ui.set_output_has_log(has_log);
         ui.set_output_run_id(displayed.clone().unwrap_or_default().into());
@@ -826,6 +836,8 @@ impl Controller {
             .find(|status| rows.iter().any(|r| r.status.as_str() == *status))
             .unwrap_or_default();
         self.state.borrow_mut().aggregate = aggregate.to_string();
+        let busy = rows.iter().any(|row| row.status_busy);
+        self.state.borrow_mut().aggregate_busy = busy;
         let model = ModelRc::new(VecModel::from(rows));
         self.ui().set_apps(model.clone());
         self.each_mini(|g| g.set_apps(model.clone()));
@@ -835,6 +847,7 @@ impl Controller {
             .iter()
             .any(|r| r.info().agent.is_some());
         self.modes.icon.set_status(aggregate.into());
+        self.modes.icon.set_status_busy(busy);
         self.modes.icon.set_status_agent(agent_running);
         self.refresh_tray();
     }
@@ -865,6 +878,9 @@ impl Controller {
                 kind: format!("{:?}", action.kind).to_lowercase().into(),
                 enabled,
                 status: if running.is_some() { "running" } else { "" }.into(),
+                busy: active_infos
+                    .iter()
+                    .any(|r| r.action_id == action.id && r.is_busy()),
                 agent: running.is_some_and(|r| r.agent.is_some()),
             }
         };
@@ -902,7 +918,11 @@ impl Controller {
         }
         runs.truncate(3.max(active_infos.len()));
 
-        let (status, status_agent, agent) = match active_infos.last() {
+        let badge_info = active_infos
+            .iter()
+            .find(|info| info.is_busy())
+            .or_else(|| active_infos.last());
+        let (status, status_agent, agent) = match badge_info {
             Some(info) => (
                 "running".to_string(),
                 info.agent.is_some(),
@@ -937,6 +957,7 @@ impl Controller {
             group_header: group_header.into(),
             status: status.into(),
             status_agent,
+            status_busy: active_infos.iter().any(|info| info.is_busy()),
             agent: agent
                 .filter(|a| !a.is_empty() && status_agent)
                 .unwrap_or_default()

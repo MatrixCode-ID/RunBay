@@ -248,6 +248,8 @@ fn build_run_skips_run_when_build_fails() {
     let info = run.info();
     assert_eq!(info.status, RunStatus::Failed);
     assert_eq!(info.exit_code, Some(2));
+    assert_eq!(info.phase, runbay::data::ActionKind::Build);
+    assert!(!info.is_busy());
     assert!(!marker.exists(), "the run script ran after a failed build");
     let lines = texts(&run);
     assert!(lines.iter().any(|l| l.contains("── Build ──")), "{lines:?}");
@@ -255,6 +257,64 @@ fn build_run_skips_run_when_build_fails() {
     let records = f.store().history(&app.id).read().unwrap();
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].action_id, "build-run");
+}
+
+#[test]
+fn build_run_switches_from_busy_to_run_lamp() {
+    use runbay::data::ActionKind;
+    use runbay::runner::RunEvent;
+    let f = Fixture::new();
+    let (tx, rx) = std::sync::mpsc::channel();
+    f.manager.subscribe(move |event| {
+        if let RunEvent::Started(info) | RunEvent::PhaseChanged(info) = event {
+            tx.send(info.clone()).unwrap();
+        }
+    });
+    let app = f.app(
+        "Phases",
+        &[
+            ("build", "Write-Output 'built'"),
+            ("run", "Write-Output 'running'"),
+        ],
+    );
+    let run = f.finish(&app, "build-run");
+    let phases: Vec<_> = rx.try_iter().collect();
+    assert_eq!(phases.len(), 2);
+    assert!(phases.iter().all(|info| info.kind == ActionKind::BuildRun));
+    assert_eq!(phases[0].phase, ActionKind::Build);
+    assert!(phases[0].is_busy());
+    assert_eq!(phases[1].phase, ActionKind::Run);
+    assert!(!phases[1].is_busy());
+    assert_eq!(run.info().status, RunStatus::Success);
+    assert!(!run.info().is_busy());
+}
+
+#[test]
+fn standalone_build_and_run_have_distinct_activity_indicators() {
+    use runbay::data::ActionKind;
+    use runbay::runner::RunEvent;
+    let f = Fixture::new();
+    let (tx, rx) = std::sync::mpsc::channel();
+    f.manager.subscribe(move |event| {
+        if let RunEvent::Started(info) = event {
+            tx.send(info.clone()).unwrap();
+        }
+    });
+    let app = f.app(
+        "Indicators",
+        &[
+            ("build", "Write-Output 'built'"),
+            ("run", "Write-Output 'running'"),
+        ],
+    );
+    f.finish(&app, "build");
+    f.finish(&app, "run");
+    let build = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    let run = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert_eq!(build.phase, ActionKind::Build);
+    assert!(build.is_busy());
+    assert_eq!(run.phase, ActionKind::Run);
+    assert!(!run.is_busy());
 }
 
 #[test]
@@ -359,6 +419,7 @@ fn events_are_delivered() {
     f.manager.subscribe(move |e| {
         let name = match e {
             runbay::runner::RunEvent::Started(_) => "started",
+            runbay::runner::RunEvent::PhaseChanged(_) => "phase-changed",
             runbay::runner::RunEvent::Output { .. } => "output",
             runbay::runner::RunEvent::Finished(_) => "finished",
         };

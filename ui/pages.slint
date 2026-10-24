@@ -1,6 +1,6 @@
 // Full-mode pages: the app editor, settings, the Action History flyout, and dialogs.
 
-import { LineEdit, TextEdit, ComboBox, Switch, ScrollView, ListView, AboutSlint } from "std-widgets.slint";
+import { LineEdit, TextEdit, ComboBox, Switch, CheckBox, ScrollView, ListView, AboutSlint } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
 import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton } from "components.slint";
 
@@ -20,6 +20,7 @@ export struct HistoryRow {
     run-id: string,
     title: string,
     status: string,
+    busy: bool,
     agent: string,
     time: string,
     duration: string,
@@ -88,9 +89,14 @@ export global SettingsBridge {
     in-out property <bool> auto-update;
     in-out property <int> mcp-index;
     in-out property <string> update-status;
+    in-out property <bool> data-custom;
+    in-out property <string> data-hint;
+    in-out property <bool> data-locked;
     callback changed();
     callback close();
     callback check-updates();
+    callback data-custom-toggled();
+    callback choose-data-folder();
 }
 
 export global HistoryBridge {
@@ -532,12 +538,19 @@ export component SettingsPage inherits Rectangle {
     in-out property <bool> auto-update <=> SettingsBridge.auto-update;
     in-out property <int> mcp-index <=> SettingsBridge.mcp-index;
     in-out property <string> update-status <=> SettingsBridge.update-status;
+    in-out property <bool> data-custom <=> SettingsBridge.data-custom;
+    in-out property <string> data-hint <=> SettingsBridge.data-hint;
+    in-out property <bool> data-locked <=> SettingsBridge.data-locked;
     callback changed();
     changed() => { SettingsBridge.changed(); }
     callback close();
     close() => { SettingsBridge.close(); }
     callback check-updates();
     check-updates() => { SettingsBridge.check-updates(); }
+    callback data-custom-toggled();
+    data-custom-toggled() => { SettingsBridge.data-custom-toggled(); }
+    callback choose-data-folder();
+    choose-data-folder() => { SettingsBridge.choose-data-folder(); }
 
     background: Theme.surface;
     TouchArea { }
@@ -616,6 +629,22 @@ export component SettingsPage inherits Rectangle {
                         Switch {
                             checked <=> autostart;
                             toggled => { root.changed(); }
+                        }
+                    }
+                    SectionTitle { text: "Data"; }
+                    SettingRow {
+                        label: "Use another data folder";
+                        hint: data-hint;
+                        CheckBox {
+                            checked <=> data-custom;
+                            enabled: !data-locked;
+                            toggled => { root.data-custom-toggled(); }
+                        }
+                        PillButton {
+                            text: "Choose folder";
+                            style: "tonal";
+                            enabled: data-custom && !data-locked;
+                            clicked => { root.choose-data-folder(); }
                         }
                     }
                     SectionTitle { text: "New actions"; }
@@ -772,6 +801,7 @@ export component HistoryFlyout inherits Rectangle {
                     spacing: 10px;
                     StatusBadge {
                         status: row.status;
+                        busy: row.busy;
                         agent: row.agent != "";
                         y: (parent.height - self.height) / 2;
                     }

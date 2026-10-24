@@ -1,14 +1,14 @@
-//! The settings page and applying settings (theme, line limit, autostart).
+//! The settings page and applying settings (theme, line limit, autostart, data folder).
 
 use std::rc::Rc;
 
 use slint::ComponentHandle;
 
-use super::Controller;
 use super::editor::{parse_retention, retention_controls, when_running_index, when_running_of};
+use super::{Controller, convert};
 use crate::SettingsBridge;
-use crate::data::{IconSize, McpAccess, Settings, ThemePref};
-use crate::platform::autostart;
+use crate::data::{DataLocation, IconSize, McpAccess, Settings, Store, ThemePref};
+use crate::platform::{self, autostart};
 
 impl Controller {
     pub(super) fn open_settings(&self) {
@@ -49,7 +49,49 @@ impl Controller {
             McpAccess::AskFirst => 1,
             McpAccess::Unrestricted => 2,
         });
+        self.refresh_data_location();
         ui.set_page("settings".into());
+    }
+
+    /// Shows the data location setting. An instance started with `--data-dir` cannot change
+    /// it, because the file lives in the default data folder of the real instance.
+    fn refresh_data_location(&self) {
+        let ui = self.ui();
+        let g = ui.global::<SettingsBridge>();
+        let in_use = self.store.root().display().to_string();
+        let locked = !self.restart_args.is_empty();
+        let location = Store::load_location(&Store::default_root());
+        let hint = if locked {
+            format!("Set by --data-dir: {in_use}")
+        } else {
+            let next = location
+                .custom_root()
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_else(Store::default_root);
+            if next == self.store.root() {
+                format!("In use: {in_use}")
+            } else {
+                format!(
+                    "In use: {in_use}. Restart RunBay to use {}; existing data is not moved.",
+                    next.display()
+                )
+            }
+        };
+        g.set_data_locked(locked);
+        g.set_data_custom(location.custom);
+        g.set_data_hint(hint.into());
+    }
+
+    /// Saves the data location; it takes effect when RunBay starts again.
+    fn save_data_location(&self, location: &DataLocation) {
+        self.report(Store::save_location(&Store::default_root(), location));
+        self.refresh_data_location();
+    }
+
+    /// Asks for the data folder; `None` when cancelled.
+    fn pick_data_folder(&self) -> Option<std::path::PathBuf> {
+        let owner = convert::hwnd(self.ui().window());
+        platform::dialogs::pick_folder(owner, "Data folder")
     }
 
     /// Reads the page; invalid numbers keep the previous value until they are valid.
@@ -140,6 +182,32 @@ impl Controller {
             if let Some(c) = weak.upgrade() {
                 let new = c.settings_from_page();
                 c.apply_settings(new);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        g.on_data_custom_toggled(move || {
+            if let Some(c) = weak.upgrade() {
+                let mut location = Store::load_location(&Store::default_root());
+                location.custom = c.ui().global::<SettingsBridge>().get_data_custom();
+                if location.custom && location.path.is_none() {
+                    match c.pick_data_folder() {
+                        Some(path) => location.path = Some(path),
+                        None => return c.refresh_data_location(),
+                    }
+                }
+                c.save_data_location(&location);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        g.on_choose_data_folder(move || {
+            if let Some(c) = weak.upgrade()
+                && let Some(path) = c.pick_data_folder()
+            {
+                let location = DataLocation {
+                    custom: true,
+                    path: Some(path),
+                };
+                c.save_data_location(&location);
             }
         });
         let weak = Rc::downgrade(self);

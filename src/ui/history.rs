@@ -106,6 +106,10 @@ impl Controller {
                     run_id: r.run_id.clone().into(),
                     title: format!("{app_name} · {action_name}").into(),
                     status: r.status.as_str().into(),
+                    busy: self
+                        .manager
+                        .find(&r.run_id)
+                        .is_some_and(|run| run.info().is_busy()),
                     agent: r.agent.clone().unwrap_or_default().into(),
                     time: convert::time_label(&r.start).into(),
                     duration: r

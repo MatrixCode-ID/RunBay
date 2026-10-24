@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 use super::atomic::{read_json, write_atomic, write_json};
 use super::history::History;
 use super::ids::{is_slug, unique_slug};
-use super::model::{ActionKind, AppDef, Groups, Settings, WindowState};
+use super::model::{ActionKind, AppDef, DataLocation, Groups, Settings, WindowState};
 
 /// An app folder as loaded from disk: either a valid definition or an error message.
 #[derive(Debug, Clone)]
@@ -56,6 +56,43 @@ impl Store {
             .ok()
             .and_then(|exe| exe.parent().map(|p| p.join("data")))
             .unwrap_or_else(|| PathBuf::from("data"))
+    }
+
+    /// The data folder chosen in Settings (`meta/data-location.json` of the default data
+    /// folder), or the default one when none is chosen.
+    pub fn configured_root() -> PathBuf {
+        let default = Self::default_root();
+        Self::load_location(&default)
+            .custom_root()
+            .map(Path::to_path_buf)
+            .unwrap_or(default)
+    }
+
+    /// Reads the data location kept in the default data folder `default_root`; a missing or
+    /// corrupted file gives the default location.
+    pub fn load_location(default_root: &Path) -> DataLocation {
+        let path = Self::location_file(default_root);
+        if !path.exists() {
+            return DataLocation::default();
+        }
+        read_json(&path).unwrap_or_else(|e| {
+            log::error!("{e:#}");
+            DataLocation::default()
+        })
+    }
+
+    /// Writes the data location into the default data folder `default_root`.
+    pub fn save_location(default_root: &Path, location: &DataLocation) -> Result<()> {
+        let path = Self::location_file(default_root);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("cannot create {}", parent.display()))?;
+        }
+        write_json(&path, location)
+    }
+
+    fn location_file(default_root: &Path) -> PathBuf {
+        default_root.join("meta").join("data-location.json")
     }
 
     /// The data folder.
@@ -322,6 +359,26 @@ mod tests {
         assert_eq!(apps.len(), 2);
         store.delete_app("my-app").unwrap();
         assert_eq!(store.load_apps().len(), 1);
+    }
+
+    #[test]
+    fn data_location_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let default = dir.path().join("data");
+        assert_eq!(Store::load_location(&default), DataLocation::default());
+        let location = DataLocation {
+            custom: true,
+            path: Some(dir.path().join("repo").join("runbay")),
+        };
+        Store::save_location(&default, &location).unwrap();
+        let loaded = Store::load_location(&default);
+        assert_eq!(loaded, location);
+        assert_eq!(loaded.custom_root(), location.path.as_deref());
+        let off = DataLocation {
+            custom: false,
+            ..location
+        };
+        assert_eq!(off.custom_root(), None);
     }
 
     #[test]

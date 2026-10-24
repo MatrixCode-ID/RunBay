@@ -35,7 +35,7 @@ pub struct Tray {
     on_top: CheckMenuItem,
     autostart: CheckMenuItem,
     update: MenuItem,
-    last: std::cell::RefCell<(String, bool)>,
+    last: std::cell::RefCell<(String, bool, bool)>,
 }
 
 impl Tray {
@@ -67,7 +67,7 @@ impl Tray {
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)
             .with_tooltip("RunBay")
-            .with_icon(render(&base, "", false)?)
+            .with_icon(render(&base, "", false, false)?)
             .build()
             .context("cannot create the tray icon")?;
 
@@ -106,21 +106,27 @@ impl Tray {
             on_top,
             autostart,
             update,
-            last: std::cell::RefCell::new((String::new(), false)),
+            last: std::cell::RefCell::new((String::new(), false, false)),
         })
     }
 
     /// Updates the badge (`running`, `failed`, `success`, or empty), the agent dot, and
-    /// the tooltip.
-    pub fn set_status(&self, status: &str, agents: &[String], update_ready: Option<&str>) {
+    /// the tooltip. Active work uses blue; active Run steps use a green lamp.
+    pub fn set_status(
+        &self,
+        status: &str,
+        busy: bool,
+        agents: &[String],
+        update_ready: Option<&str>,
+    ) {
         let connected = !agents.is_empty();
         let changed = {
             let mut last = self.last.borrow_mut();
-            let changed = last.0 != status || last.1 != connected;
-            *last = (status.to_string(), connected);
+            let changed = last.0 != status || last.1 != connected || last.2 != busy;
+            *last = (status.to_string(), connected, busy);
             changed
         };
-        if changed && let Ok(icon) = render(&self.base, status, connected) {
+        if changed && let Ok(icon) = render(&self.base, status, busy, connected) {
             let _ = self.icon.set_icon(Some(icon));
         }
         let mut tooltip = "RunBay".to_string();
@@ -150,10 +156,11 @@ impl Tray {
 }
 
 /// Draws the badge (bottom right) and the agent dot (top right) on the logo.
-fn render(base: &image::RgbaImage, status: &str, agent: bool) -> Result<Icon> {
+fn render(base: &image::RgbaImage, status: &str, busy: bool, agent: bool) -> Result<Icon> {
     let mut img = base.clone();
     let badge = match status {
-        "running" => Some([0x1e, 0x88, 0xe5]),
+        "running" if busy => Some([0x1e, 0x88, 0xe5]),
+        "running" => Some([0x2e, 0x7d, 0x32]),
         "failed" => Some([0xd3, 0x2f, 0x2f]),
         "success" => Some([0x2e, 0x7d, 0x32]),
         _ => None,

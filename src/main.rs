@@ -10,7 +10,7 @@ use runbay::ui;
 
 fn main() {
     let mut options = ui::Options {
-        data_dir: Store::default_root(),
+        data_dir: Store::configured_root(),
         autostart: false,
         headless: false,
         custom_data_dir: false,

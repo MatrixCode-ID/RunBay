@@ -274,6 +274,10 @@ impl Controller {
     /// Updates the popup title, status, and agent.
     pub(super) fn refresh_popup_header(&self) {
         let run_id = self.state.borrow().popup.run_id.clone();
+        let busy = run_id
+            .as_deref()
+            .and_then(|id| self.manager.find(id))
+            .is_some_and(|run| run.info().is_busy());
         let (title, status, agent) = match run_id.as_deref() {
             Some(id) => match self.manager.find(id) {
                 Some(run) => {
@@ -304,6 +308,7 @@ impl Controller {
             g.set_output(output.clone());
             g.set_output_title(title.clone().into());
             g.set_output_status(status.clone().into());
+            g.set_output_busy(busy);
             g.set_output_agent(agent.clone().into());
             g.set_output_run_id(run_id.clone().unwrap_or_default().into());
         });

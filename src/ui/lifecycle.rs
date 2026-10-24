@@ -45,7 +45,12 @@ impl Controller {
         let Some(tray) = tray.as_ref() else { return };
         let st = self.state.borrow();
         let update = self.update_ready_version();
-        tray.set_status(&st.aggregate, &st.agents, update.as_deref());
+        tray.set_status(
+            &st.aggregate,
+            st.aggregate_busy,
+            &st.agents,
+            update.as_deref(),
+        );
         let s = self.settings.read().unwrap();
         let on_top = match st.mode {
             Mode::Full => false,

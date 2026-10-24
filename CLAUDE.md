@@ -2,6 +2,23 @@
 
 Instructions for Claude Code (and other coding agents) working in this repository.
 
+## Shared instructions for Codex and Claude (user decision 2026-10-24)
+
+- `CLAUDE.md` is the authoritative project instruction file for both Codex and
+  Claude Code. `AGENTS.md` only directs Codex to this file.
+- Before starting a task, read the current root `CLAUDE.md` from disk. Do not
+  rely on a summary from an earlier session.
+- Before working in a subdirectory, read every `CLAUDE.md` on the path from the
+  repository root to that directory, and any required documents they reference.
+  More specific instructions apply within their directory scope.
+- When Codex adds, changes, or receives a project rule from the user, record it
+  in the appropriate root or subdirectory `CLAUDE.md`. Do not duplicate project
+  rules in `AGENTS.md` or maintain a separate Codex rule set.
+- Preserve existing instructions unless the user explicitly asks to replace or
+  remove them, and tell the user which instruction files were updated.
+- If a required instruction file cannot be read, tell the user before continuing
+  work that depends on it.
+
 ## Project
 
 **RunBay** is a small Windows tool that registers applications and runs their
@@ -91,6 +108,23 @@ RunBay will be published as open source under the **MIT license**.
   `version` in `Cargo.toml` in the same change, and only when the user asks for a
   release. One untagged release note per push to `main`.
 - Never create or push `v*` tags by hand; the workflow does it.
+
+## Local artifacts
+
+- Local build outputs, measurements, screenshots, and other files that do not belong
+  in the repository are stored in `../.artefacts/RunBay/` (relative to the repository
+  root), never inside the repository.
+- `scripts/publish-local.cmd` runs fmt, clippy, and tests, builds the release
+  executable, and publishes `RunBay.exe` with `SHA256SUMS` to
+  `../.artefacts/RunBay/dist/`. `-SkipTests` skips the checks.
+
+## Scripts
+
+- Entry points the user runs are `.cmd` files in `scripts/`; they only call their
+  implementation.
+- The `.ps1` files and anything else a script needs live in `scripts/<subject>/`,
+  where `<subject>` is the name of the script (e.g. `scripts/publish-local.cmd` →
+  `scripts/publish-local/publish-local.ps1`).
 
 ## Code conventions
 
