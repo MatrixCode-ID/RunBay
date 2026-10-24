@@ -12,6 +12,39 @@ The specification is [doc/specification.md](doc/specification.md). Read it befor
 implementing or changing behavior; when a decision changes, update the
 specification in the same change.
 
+## Ideas → plan → execution
+
+- Ideas that are **still under discussion and not decided** are written in
+  `doc/ideas/<topic>.md`, not in `plan/` or the specification. An idea note is
+  not a work order: agents never implement it.
+- **Every suggestion or idea from an agent** (improvements, refactors, features,
+  findings nobody asked for, follow-up proposals at the end of a report) is also
+  written to `doc/ideas/` instead of being implemented directly or written as a
+  plan. Exception: when the user **directly asks for a code change**, do it
+  without going through idea/plan; extra suggestions that come up during that
+  work are still recorded in `doc/ideas/`.
+- Each note contains: **date**, **status** (`discussion`, `considering`,
+  `planned`, or `rejected`), the **decisions made so far** with their reasons and
+  dates, the **open questions**, and a **link to the resulting plan** once
+  promoted. When the discussion continues, update the same note (new decisions
+  with their date); do not create a second note for the same topic. Old notes are
+  never deleted, including `rejected` ones, so the reasons stay on record.
+- Lifecycle:
+  1. An **idea** in `doc/ideas/` is discussed until it is mature: decisions are
+     clear and no open question blocks it.
+  2. Only then is a **plan** written in `plan/unexecuted/<topic>.md`; the idea's
+     status becomes `planned`, with a link to the plan. Before writing the plan,
+     ask the user every decision it needs and record the answers in the plan as
+     final, so execution needs no further questions.
+  3. A plan is executed only when the user asks for it, then moved to
+     `plan/executed/`. Decisions that change product behavior are carried into
+     [doc/specification.md](doc/specification.md) in the same change.
+- One topic uses one idea note and one plan file; do not split a topic into
+  several files per phase or part.
+- Idea notes and plans are written in **English** and follow the open-source rules
+  below (no private data, product-neutral), because they are published with the
+  repository.
+
 ## Open source — MIT license
 
 RunBay will be published as open source under the **MIT license**.
