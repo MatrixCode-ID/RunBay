@@ -243,6 +243,10 @@ A regular, resizable window.
   runs from every app's `history/index.jsonl`, newest first, filterable by
   app/action/status. Selecting an entry opens its log in the Output panel.
 - App menu: Edit, Duplicate, Remove, Open working directory, Open app data folder.
+- **Version**: the RunBay version (e.g. `RunBay 1.0.0-alpha.1`) is always
+  visible in the window, outside the About dialog — at the bottom of the
+  Navigation panel. When an update is ready, the *Update ready* badge sits next
+  to it; clicking the version opens About.
 
 ### 6.2 Compact
 
@@ -253,6 +257,9 @@ A small resizable window (default about 320×420).
 - **Message icon per app**: opens a popup with the output of that app's last
   run, live while running, with Stop and Open in Full buttons.
 - Buttons: always on top (pin), switch mode.
+- **Version**: the RunBay version is shown in a small footer of the window,
+  with the *Update ready* badge next to it when an update is ready; clicking it
+  opens About.
 
 ### 6.3 Icon
 
@@ -428,8 +435,9 @@ The runner works on its own thread; the UI only receives events through
    in the background to `data/meta/update/`.
 2. The checksum of the downloaded executable must match `SHA256SUMS`; on a
    mismatch the download is discarded and reported.
-3. RunBay shows an **Update ready** badge (Full header, tray icon, About) with the
-   new version and a link to its release notes.
+3. RunBay shows an **Update ready** badge (next to the version in Full and
+   Compact, tray icon, About) with the new version and a link to its release
+   notes.
 4. The update is installed only when the user chooses **Restart to update**.
    If actions are running, the user is asked first: *Stop all and update* /
    *Cancel*.
