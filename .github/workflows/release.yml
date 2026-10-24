@@ -1,0 +1,143 @@
+name: Release
+
+# A push to main that changes the application (src/**, Cargo.toml, Cargo.lock) releases the version of the
+# single untagged release note in doc/ReleaseNote/<version>.md: it builds RunBay.exe with that version,
+# tags v<version>, and creates the GitHub Release. Without an untagged release note nothing is published.
+# Tags pushed by this workflow use GITHUB_TOKEN, so they do not trigger another run.
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'Cargo.toml', 'Cargo.lock']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-(alpha|beta).N; stages sort alpha < beta < release.
+          function ConvertTo-Version([string] $text) {
+            if ($text -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta)\.(\d+))?$') { return $null }
+            $stage = switch ($Matches[4]) { 'alpha' { 0 } 'beta' { 1 } default { 2 } }
+            $number = if ($Matches[5]) { [int] $Matches[5] } else { 0 }
+            [pscustomobject] @{
+              Text = $text
+              Key  = @([int] $Matches[1], [int] $Matches[2], [int] $Matches[3], $stage, $number)
+            }
+          }
+
+          function Compare-Version($a, $b) {
+            for ($i = 0; $i -lt 5; $i++) {
+              if ($a.Key[$i] -ne $b.Key[$i]) { return [Math]::Sign($a.Key[$i] - $b.Key[$i]) }
+            }
+            return 0
+          }
+
+          git fetch --quiet --force --tags origin
+          $tags = @(git tag --list 'v*' | ForEach-Object { ConvertTo-Version ($_ -replace '^v', '') } | Where-Object { $_ })
+          $tagged = @($tags | ForEach-Object Text)
+
+          $notes = @(Get-ChildItem doc/ReleaseNote -Filter '*.md' -File -ErrorAction SilentlyContinue |
+            Where-Object Name -ne 'README.md')
+          $invalid = @($notes | Where-Object { -not (ConvertTo-Version $_.BaseName) } | ForEach-Object Name)
+          if ($invalid) { throw "Release note file names are not versions: $($invalid -join ', ')" }
+
+          $pending = @($notes | ForEach-Object BaseName | Where-Object { $_ -notin $tagged })
+          if (-not $pending) {
+            Write-Host '::notice::No untagged release note; nothing to publish.'
+            "version=" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          if ($pending.Count -gt 1) { throw "More than one untagged release note: $($pending -join ', '). Release one version per push." }
+
+          $version = ConvertTo-Version $pending[0]
+          $latest = $tags | Sort-Object { $_.Key[0] }, { $_.Key[1] }, { $_.Key[2] }, { $_.Key[3] }, { $_.Key[4] } | Select-Object -Last 1
+          if ($latest -and (Compare-Version $version $latest) -le 0) {
+            throw "Version $($version.Text) is not higher than the latest tag v$($latest.Text)."
+          }
+
+          $note = Get-Content "doc/ReleaseNote/$($version.Text).md" -Raw
+          if ($note -notmatch '(?ms)^## Summary\s*\r?\n\s*\S') { throw "doc/ReleaseNote/$($version.Text).md has no '## Summary' content." }
+
+          Write-Host "::notice::Releasing $($version.Text)"
+          "version=$($version.Text)" >> $env:GITHUB_OUTPUT
+
+  release:
+    needs: validate
+    if: needs.validate.outputs.version != ''
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The release note is the source of the version; Cargo.toml is aligned in the build only.
+      - name: Set package version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content Cargo.toml -Raw
+          $updated = [regex]::Replace($manifest, '(?m)^(version\s*=\s*)"[^"]*"', "`${1}`"$env:VERSION`"", 1)
+          if ($updated -eq $manifest -and $manifest -notmatch "(?m)^version\s*=\s*`"$([regex]::Escape($env:VERSION))`"") {
+            throw 'Could not set the package version in Cargo.toml.'
+          }
+          Set-Content Cargo.toml $updated -NoNewline
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Collect assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory release-assets | Out-Null
+          Copy-Item target/release/runbay.exe release-assets/RunBay.exe
+          $hash = (Get-FileHash release-assets/RunBay.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content release-assets/SHA256SUMS "$hash *RunBay.exe" -NoNewline
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RunBay-${{ env.VERSION }}
+          path: release-assets/*
+          if-no-files-found: error
+
+      - name: Tag and publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "v$env:VERSION"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a $tag -m "Release $env:VERSION" $env:GITHUB_SHA
+          git push origin $tag
+          if ($LASTEXITCODE -ne 0) { throw "Pushing tag $tag failed." }
+
+          $arguments = @('release', 'create', $tag, 'release-assets/RunBay.exe', 'release-assets/SHA256SUMS',
+            '--title', "RunBay $env:VERSION", '--notes-file', "doc/ReleaseNote/$env:VERSION.md", '--verify-tag')
+          if ($env:VERSION -match '-') { $arguments += '--prerelease' }
+          gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw "Creating release $tag failed." }

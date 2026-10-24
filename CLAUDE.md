@@ -34,11 +34,27 @@ RunBay will be published as open source under the **MIT license**.
 - New source files do not need per-file license headers; the root `LICENSE` file
   covers the repository.
 
-## Git
+## Git, branches, and remotes
 
+- Daily work happens on branch `work-bench`, tracking `private/work-bench` on the
+  private repository `MatrixCode-ID/RunBay-Private` (remote `private`).
+- The public repository `MatrixCode-ID/RunBay` (remote `origin`) holds only `main`;
+  `main` tracks `origin/main`. Never push `work-bench` to `origin`.
+- Publishing: merge `work-bench` into `main`, then push `main` to `origin`.
 - Commit or push only when the user asks.
 - Commit messages are in English, with a short imperative title (e.g.
   `Add Job Object based process runner`).
+
+## Releases
+
+- A push to `main` that changes `src/**`, `Cargo.toml`, or `Cargo.lock` runs
+  `.github/workflows/release.yml`, which publishes the version of the single
+  untagged release note in `doc/ReleaseNote/<version>.md`.
+- Every release needs its release note; follow
+  [doc/ReleaseNote/README.md](doc/ReleaseNote/README.md). Add the note and raise
+  `version` in `Cargo.toml` in the same change, and only when the user asks for a
+  release. One untagged release note per push to `main`.
+- Never create or push `v*` tags by hand; the workflow does it.
 
 ## Code conventions
 

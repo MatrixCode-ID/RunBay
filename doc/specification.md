@@ -24,6 +24,9 @@ and stores the output of every run.
 | Language / UI | **Rust + Slint**; design language **Material 3 Expressive** |
 | Platform | Windows 10/11 x64 |
 | License | MIT |
+| Source and releases | Published on GitHub (`MatrixCode-ID/RunBay`); the executable is distributed through GitHub Releases |
+| Versioning | SemVer, starting at **1.0.0-alpha.1**; stages **alpha → beta → release**, with **no update channels** |
+| Auto update | Checks on startup and every 6 hours; downloads automatically, installs when the user agrees; can be turned off |
 | PowerShell | `pwsh.exe` (7) by default; falls back to `powershell.exe` (5.1) when not found. Can be forced per app |
 | Build+Run | Run is **cancelled** when the build ends with exit code ≠ 0 |
 | Action while the app is still running | Set **per action** in the GUI: Ask / Reject / Stop and restart / Parallel. Default for a new action: **Ask** |
@@ -291,6 +294,7 @@ App editor dialog (from Full; Compact/Icon open Full for this):
 | On-screen output line limit | 10,000 |
 | Default retention for new actions | as in §2 |
 | Default `whenRunning` for new actions | Ask |
+| Auto update | On |
 
 **Load with Windows** writes a `RunBay` value under
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` holding the executable path
@@ -301,7 +305,8 @@ with the `--autostart` argument; turning it off removes the value. With
 
 - Tray icon with the aggregated badge.
 - Left click: show/focus the window of the active mode.
-- Menu: Full / Compact / Icon, Always on top, Load with Windows, Exit.
+- Menu: Full / Compact / Icon, Always on top, Load with Windows,
+  Check for updates (or *Restart to update* when an update is ready), Exit.
 - Closing the window (× button) in Full/Compact **hides it to the tray** instead
   of exiting. Exiting is only through the Exit menu.
 - Exiting with active runs → dialog: *Stop all and exit* / *Cancel*.
@@ -350,11 +355,90 @@ One application crate (`runbay`) with these modules:
 | `ansi` | Parse SGR into colored segments |
 | `ui` | Slint components (`.slint`) per mode, theme tokens, model bindings |
 | `platform` | Tray, autostart registry, single instance, Windows theme detection, monitor positions |
+| `update` | Release lookup, download, checksum verification, executable swap |
 
 The runner works on its own thread; the UI only receives events through
 `slint::invoke_from_event_loop`.
 
-## 14. Out of scope for the first version
+## 14. Versioning, releases, and auto update
+
+### 14.1 Versioning
+
+- SemVer 2.0. The first version is **`1.0.0-alpha.1`**.
+- Stages run in order **alpha → beta → release**, e.g. `1.0.0-alpha.1`,
+  `1.0.0-alpha.2`, `1.0.0-beta.1`, `1.0.0`. A later version starts again at alpha
+  (`1.1.0-alpha.1`).
+- The version lives in `Cargo.toml`, kept equal to the newest release note, and is
+  embedded in the executable (shown in About and in the Windows file properties).
+  The release build takes the version from the release note.
+- **No channels**: there is a single update line. The updater offers the
+  highest version published, whatever its stage. Users on a stable release will
+  therefore also receive the next alpha/beta once it is published.
+
+### 14.2 GitHub releases
+
+- Each version is a Git tag `v<version>` (e.g. `v1.0.0-alpha.1`) with a GitHub
+  Release of the same name. Alpha and beta releases are marked as
+  *pre-release* on GitHub; this marking is informational only and does not
+  affect the updater.
+- Release assets:
+  - `RunBay.exe` — the portable executable (x64).
+  - `SHA256SUMS` — SHA-256 checksums of the assets, in `sha256sum` format.
+- Every version needs a release note `doc/ReleaseNote/<version>.md`; its file
+  name is the source of the version and its content is the body of the GitHub
+  Release. Format and rules: [doc/ReleaseNote/README.md](ReleaseNote/README.md).
+- Publishing is automatic: the [Release workflow](../.github/workflows/release.yml)
+  runs on every push to `main` that changes `src/**`, `Cargo.toml`, or
+  `Cargo.lock`. It releases the single release note that has no `v<version>` tag
+  yet: builds `RunBay.exe` with that version, tags `v<version>`, and creates the
+  release with its assets. Without an untagged release note nothing is published.
+- Auto update needs the repository and its releases to be **public**; the
+  updater does not use GitHub credentials.
+
+### 14.3 Update check
+
+- With auto update on, RunBay checks **on startup** and **every 6 hours** while
+  running. *Check for updates* (tray menu and About/settings) checks immediately,
+  even when auto update is off.
+- The check calls the GitHub REST API
+  `GET /repos/MatrixCode-ID/RunBay/releases` (the `latest` endpoint skips
+  pre-releases, so it is not used), ignores drafts, parses the tag versions, and
+  picks the highest one by SemVer precedence. It sends `If-None-Match` with the
+  last `ETag` (stored in `data/meta/update.json`) to stay well inside the
+  unauthenticated rate limit.
+- A failed check (offline, API error, rate limit) is silent apart from a log
+  entry; a manual check shows the error.
+
+### 14.4 Download and install
+
+1. When a newer version is found, `RunBay.exe` and `SHA256SUMS` are downloaded
+   in the background to `data/meta/update/`.
+2. The checksum of the downloaded executable must match `SHA256SUMS`; on a
+   mismatch the download is discarded and reported.
+3. RunBay shows an **Update ready** badge (Full header, tray icon, About) with the
+   new version and a link to its release notes.
+4. The update is installed only when the user chooses **Restart to update**.
+   If actions are running, the user is asked first: *Stop all and update* /
+   *Cancel*.
+5. Install: the running `RunBay.exe` is renamed to `RunBay.exe.old`, the new
+   executable is moved into place, and RunBay restarts in the same mode and
+   position with `--updated`. On the next startup `RunBay.exe.old` is deleted.
+6. If the new executable cannot be moved into place (e.g. no write access to the
+   folder), the old executable is restored and the error is shown with the
+   download location for a manual update.
+
+The `data/` folder is never touched by an update. Changes to the data format
+must stay readable by the new version (migrations run on startup) and are
+listed in the release notes.
+
+### 14.5 Settings
+
+- **Auto update** (default on): turning it off stops the periodic and startup
+  checks; manual checks remain available.
+- A version the user dismisses with **Skip this version** is not offered again
+  until a newer one is published.
+
+## 15. Out of scope for the first version
 
 - Windows toast notifications.
 - Extracting icons from `.exe` files and built-in Material Symbols icons for apps.
@@ -363,7 +447,7 @@ The runner works on its own thread; the UI only receives events through
 - Platforms other than Windows.
 - Syncing or importing/exporting configuration between machines.
 
-## 15. Open questions
+## 16. Open questions
 
 None blocking. Defaults not specified by the user (icon sizes in px, the
 10,000-line limit, the Compact window size, memory targets) are proposals and can
