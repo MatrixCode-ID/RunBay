@@ -251,8 +251,10 @@ A regular, resizable window.
 └──────────────┴───────────────────────────────────┴─────────────┘
 ```
 
-- **Navigation**: apps grouped by group; they can be dragged to reorder and moved
-  between groups. Each app shows its icon, name, badge, Build / Run / Build+Run
+- **Navigation**: apps grouped by group. In v1 they are reordered with *Move
+  up* / *Move down* in the app menu and moved between groups by choosing the
+  group in the editor; drag and drop is a later idea
+  ([drag-reorder](ideas/drag-reorder.md)). Each app shows its icon, name, badge, Build / Run / Build+Run
   buttons, and a custom action menu. Below the app, its active/last runs are
   listed; selecting one shows its output in the Output panel.
 - **Output**: output of the selected run (live while running). Multiple active
@@ -260,7 +262,8 @@ A regular, resizable window.
 - **Action History** (right flyout, opened with the *Action History* button):
   runs from every app's `history/index.jsonl`, newest first, filterable by
   app/action/status. Selecting an entry opens its log in the Output panel.
-- App menu: Edit, Duplicate, Remove, Open working directory, Open app data folder.
+- App menu: Edit, Move up, Move down, Open working directory, Open app data
+  folder, Remove. (*Duplicate* is not in v1.)
 - **Version**: the RunBay version (e.g. `RunBay 1.0.0-alpha.1`) is always
   visible in the window, outside the About dialog — at the bottom of the
   Navigation panel. When an update is ready, the *Update ready* badge sits next
@@ -307,7 +310,11 @@ App editor dialog (from Full; Compact/Icon open Full for this):
   retention. Custom actions can be added, reordered, and removed.
 - A simple script editor (monospace, no highlighting) with an **Open in external
   editor** button (Windows `.ps1` association). Scripts are saved to
-  `actions/<action-id>.ps1`.
+  `actions/<action-id>.ps1`. *Open in external editor* writes the current script
+  to its file right away (the app must have been saved once); *Reload* reads the
+  file back after editing it outside.
+- Groups are chosen by typing a group name: an existing group (by name or id) is
+  used, a new name creates the group in `groups.json`.
 - Validation: app names are unique; the working directory must exist when an
   action runs (otherwise the run fails with a clear message).
 

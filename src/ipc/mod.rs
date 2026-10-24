@@ -6,7 +6,7 @@
 pub mod host;
 pub mod pipe;
 pub mod protocol;
-mod tools;
+pub(crate) mod tools;
 
 use std::io::{BufRead, BufReader, Write};
 

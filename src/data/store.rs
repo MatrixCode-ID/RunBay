@@ -358,6 +358,50 @@ mod tests {
     }
 
     #[test]
+    fn window_state_round_trip() {
+        use crate::data::{Mode, WindowRect, WindowState};
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        assert_eq!(store.load_window_state(), WindowState::default());
+        let state = WindowState {
+            mode: Mode::Compact,
+            full: Some(WindowRect {
+                x: -10,
+                y: 20,
+                width: 900,
+                height: 600,
+            }),
+            full_maximized: true,
+            compact: Some(WindowRect {
+                x: 1,
+                y: 2,
+                width: 320,
+                height: 420,
+            }),
+            icon: None,
+        };
+        store.save_window_state(&state).unwrap();
+        assert_eq!(store.load_window_state(), state);
+    }
+
+    #[test]
+    fn trash_and_icons() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let mut app = store.create_app("Iconic", &Settings::default()).unwrap();
+        let png = dir.path().join("a.png");
+        fs::write(&png, b"png").unwrap();
+        store.set_icon(&mut app, &png, "png").unwrap();
+        assert_eq!(app.icon.as_deref(), Some("icon.png"));
+        assert!(store.app_dir(&app.id).join("icon.png").exists());
+        let trash = store.trash_app(&app.id).unwrap();
+        assert!(trash.join("app.json").exists());
+        assert!(!store.app_dir(&app.id).exists());
+        store.empty_trash();
+        assert!(!trash.exists());
+    }
+
+    #[test]
     fn corrupted_settings_fall_back_to_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();

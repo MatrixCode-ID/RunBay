@@ -162,6 +162,7 @@ under `LicenseRef-Slint-Royalty-free-2.0`).
 | itertools | 0.15.0 | MIT OR Apache-2.0 |
 | itoa | 1.0.18 | MIT OR Apache-2.0 |
 | keyboard-types | 0.7.0 | MIT OR Apache-2.0 |
+| keyboard-types | 0.8.3 | MIT OR Apache-2.0 |
 | kurbo | 0.13.1 | Apache-2.0 OR MIT |
 | lazy_static | 1.5.1 | MIT OR Apache-2.0 |
 | lebe | 0.5.3 | BSD-3-Clause |
@@ -187,6 +188,7 @@ under `LicenseRef-Slint-Royalty-free-2.0`).
 | mio | 1.2.4 | MIT |
 | moxcms | 0.8.1 | BSD-3-Clause OR Apache-2.0 |
 | muda | 0.19.3 | Apache-2.0 OR MIT |
+| muda | 0.21.2 | Apache-2.0 OR MIT |
 | naga | 30.0.1 | MIT OR Apache-2.0 |
 | naga-types | 30.0.1 | MIT OR Apache-2.0 |
 | natord | 1.0.9 | MIT |
@@ -314,6 +316,7 @@ under `LicenseRef-Slint-Royalty-free-2.0`).
 | tracing | 0.1.44 | MIT |
 | tracing-attributes | 0.1.31 | MIT |
 | tracing-core | 0.1.36 | MIT |
+| tray-icon | 0.26.1 | MIT OR Apache-2.0 |
 | typed-index-collections | 3.5.0 | MIT OR Apache-2.0 |
 | unicase | 2.10.0 | MIT OR Apache-2.0 |
 | unicode-bidi | 0.3.18 | MIT OR Apache-2.0 |

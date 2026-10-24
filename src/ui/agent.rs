@@ -53,7 +53,11 @@ impl AgentUi for UiAgent {
 
     fn agents_changed(&self, agents: Vec<String>) {
         let _ = slint::invoke_from_event_loop(move || {
-            with_controller(|c| c.ui().set_agents(agents.join(", ").into()))
+            with_controller(|c| {
+                c.ui().set_agents(agents.join(", ").into());
+                c.state.borrow_mut().agents = agents;
+                c.refresh_tray();
+            })
         });
     }
 

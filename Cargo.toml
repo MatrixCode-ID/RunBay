@@ -27,6 +27,8 @@ slint = { version = "1.18.1", default-features = false, features = [
     "raw-window-handle-06",
 ] }
 raw-window-handle = "0.6.2"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+tray-icon = "0.26.1"
 rmcp = { version = "3.7.0", default-features = false, features = ["server", "transport-io"] }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -55,6 +57,7 @@ features = [
     "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Gdi",
     "Win32_Graphics_Dwm",

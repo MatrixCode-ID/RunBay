@@ -307,15 +307,9 @@ fn record_json(host: &Host, app_id: &str, r: &RunRecord) -> Value {
     })
 }
 
-fn list_runs(host: &Host, args: &Value) -> Result<Value> {
-    let app_filter = opt_str(args, "app_id");
-    let action_filter = opt_str(args, "action_id");
-    let status_filter = opt_str(args, "status")
-        .map(|s| RunStatus::parse(s).with_context(|| format!("unknown status \"{s}\"")));
-    let status_filter = status_filter.transpose()?;
-    let source_filter: Option<Source> = parse(args, "source")?;
-    let limit = opt_u64(args, "limit").unwrap_or(50) as usize;
-
+/// Every run known on disk or in memory (memory wins: it has the live status and includes
+/// runs without history), with its app id. `app_filter` limits it to one app.
+pub(crate) fn all_runs(host: &Host, app_filter: Option<&str>) -> Vec<(RunRecord, String)> {
     let mut runs: Vec<(RunRecord, String)> = Vec::new();
     for loaded in host.store.load_apps() {
         let id = loaded.id().to_string();
@@ -347,6 +341,19 @@ fn list_runs(host: &Host, args: &Value) -> Result<Value> {
             None => runs.push((record, info.app_id.clone())),
         }
     }
+    runs
+}
+
+fn list_runs(host: &Host, args: &Value) -> Result<Value> {
+    let app_filter = opt_str(args, "app_id");
+    let action_filter = opt_str(args, "action_id");
+    let status_filter = opt_str(args, "status")
+        .map(|s| RunStatus::parse(s).with_context(|| format!("unknown status \"{s}\"")));
+    let status_filter = status_filter.transpose()?;
+    let source_filter: Option<Source> = parse(args, "source")?;
+    let limit = opt_u64(args, "limit").unwrap_or(50) as usize;
+
+    let mut runs = all_runs(host, app_filter);
     runs.retain(|(r, _)| {
         action_filter.is_none_or(|f| f == r.action_id)
             && status_filter.is_none_or(|f| f == r.status)

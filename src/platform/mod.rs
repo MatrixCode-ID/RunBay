@@ -1,4 +1,10 @@
-//! Windows integration: theme, clipboard, opening files and folders, and window focus.
+//! Windows integration: theme, clipboard, opening files and folders, window focus,
+//! pickers, autostart, monitors, and the tray.
+
+pub mod autostart;
+pub mod dialogs;
+pub mod monitors;
+pub mod tray;
 
 use std::path::Path;
 

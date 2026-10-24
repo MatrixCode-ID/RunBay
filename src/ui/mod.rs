@@ -3,6 +3,12 @@
 
 mod agent;
 mod convert;
+mod editor;
+mod history;
+mod lifecycle;
+mod modes;
+mod settings;
+mod updates;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -82,6 +88,8 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
         store,
         settings,
         host: host.clone(),
+        editor: RefCell::new(None),
+        tray: RefCell::new(None),
         state: RefCell::new(State {
             output: Rc::new(VecModel::default()),
             ..State::default()
@@ -92,6 +100,16 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
     CONTROLLER.with(|c| *c.borrow_mut() = Some(controller.clone()));
     controller.reload_apps();
     controller.bind_callbacks(&window);
+    controller.bind_editor();
+    controller.bind_settings();
+    controller.bind_history();
+    controller.bind_close();
+    controller.restore_full_window();
+    controller.create_tray();
+    if controller.settings.read().unwrap().autostart {
+        // Keeps the registry path right when the executable moved.
+        controller.sync_autostart();
+    }
 
     manager.subscribe(|event| {
         let event = event.clone();
@@ -103,7 +121,8 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
         .spawn(move || listener.serve(move |pipe| handle_connection(&host, pipe)))
         .context("cannot start the pipe server")?;
 
-    window.run().context("the event loop failed")?;
+    controller.show_window();
+    slint::run_event_loop_until_quit().context("the event loop failed")?;
     manager.stop_all(Duration::from_secs(5));
     Ok(())
 }
@@ -154,6 +173,14 @@ struct State {
     undo: Option<crate::ipc::host::Undo>,
     /// Agent confirmations waiting to be shown; the first one is visible.
     confirmations: std::collections::VecDeque<agent::PendingConfirmation>,
+    /// Aggregated badge of all apps: running > failed > success.
+    aggregate: String,
+    /// Connected agents.
+    agents: Vec<String>,
+    /// The active display mode.
+    mode: crate::data::Mode,
+    /// Maximize the Full window when it is shown the first time.
+    full_maximized: bool,
 }
 
 struct Controller {
@@ -163,6 +190,8 @@ struct Controller {
     settings: Arc<RwLock<Settings>>,
     host: Arc<Host>,
     state: RefCell<State>,
+    editor: RefCell<Option<editor::Draft>>,
+    tray: RefCell<Option<platform::tray::Tray>>,
 }
 
 impl Controller {
@@ -181,14 +210,6 @@ impl Controller {
         };
         if let Some(dark) = scheme {
             ui.invoke_set_dark(dark);
-        }
-    }
-
-    fn show_window(&self) {
-        let ui = self.ui();
-        let _ = ui.show();
-        if let Some(hwnd) = convert::hwnd(ui.window()) {
-            platform::bring_to_front(hwnd);
         }
     }
 
@@ -266,14 +287,6 @@ impl Controller {
         }
         {
             let c = c.clone();
-            ui.on_save_editor(move || {
-                if let Some(c) = c() {
-                    c.save_editor();
-                }
-            });
-        }
-        {
-            let c = c.clone();
             ui.on_remove_app(move |id| {
                 if let Some(c) = c() {
                     c.ask_remove(&id);
@@ -316,7 +329,62 @@ impl Controller {
                 }
             });
         }
-        ui.on_version_clicked(|| {});
+        {
+            let c = c.clone();
+            ui.on_version_clicked(move || {
+                if let Some(c) = c() {
+                    c.show_about();
+                }
+            });
+        }
+        {
+            let c = c.clone();
+            ui.on_about_notices(move || {
+                if let Some(c) = c() {
+                    c.open_notices();
+                }
+            });
+        }
+        {
+            let c = c.clone();
+            ui.on_check_updates(move || {
+                if let Some(c) = c() {
+                    c.check_updates(true);
+                }
+            });
+        }
+        {
+            let c = c.clone();
+            ui.on_open_settings(move || {
+                if let Some(c) = c() {
+                    c.open_settings();
+                }
+            });
+        }
+        {
+            let c = c.clone();
+            ui.on_toggle_history(move || {
+                if let Some(c) = c() {
+                    c.toggle_history();
+                }
+            });
+        }
+        {
+            let c = c.clone();
+            ui.on_exit_answer(move |answer| {
+                if let Some(c) = c() {
+                    c.exit_answer(&answer);
+                }
+            });
+        }
+        {
+            let c = c.clone();
+            ui.on_move_app(move |id, delta| {
+                if let Some(c) = c() {
+                    c.move_app(&id, delta);
+                }
+            });
+        }
         {
             let c = c.clone();
             ui.on_agent_ask_answer(move |answer| {
@@ -472,6 +540,7 @@ impl Controller {
                 }
                 self.refresh_nav();
                 self.refresh_header();
+                self.refresh_history();
             }
         }
     }
@@ -681,7 +750,13 @@ impl Controller {
             rows.push(row);
         }
         drop(st);
+        let aggregate = ["running", "failed", "success"]
+            .into_iter()
+            .find(|status| rows.iter().any(|r| r.status.as_str() == *status))
+            .unwrap_or_default();
+        self.state.borrow_mut().aggregate = aggregate.to_string();
         self.ui().set_apps(ModelRc::new(VecModel::from(rows)));
+        self.refresh_tray();
     }
 
     fn app_row(
@@ -820,68 +895,6 @@ impl Controller {
         };
         if let Some(path) = path {
             self.report(platform::open_path(&path));
-        }
-    }
-
-    fn open_editor(&self, id: Option<String>) {
-        let ui = self.ui();
-        ui.set_editor_error(SharedString::new());
-        match id.and_then(|id| self.app(&id)) {
-            Some(app) => {
-                ui.set_editor_app_id(app.id.clone().into());
-                ui.set_editor_name(app.name.clone().into());
-                ui.set_editor_working_directory(app.working_directory.clone().into());
-                ui.set_editor_build_script(self.store.read_script(&app, "build").into());
-                ui.set_editor_run_script(self.store.read_script(&app, "run").into());
-            }
-            None => {
-                ui.set_editor_app_id(SharedString::new());
-                ui.set_editor_name(SharedString::new());
-                ui.set_editor_working_directory(SharedString::new());
-                ui.set_editor_build_script(SharedString::new());
-                ui.set_editor_run_script(SharedString::new());
-            }
-        }
-        ui.set_editor_visible(true);
-    }
-
-    fn save_editor(&self) {
-        let ui = self.ui();
-        let result = (|| -> Result<()> {
-            let name = ui.get_editor_name().trim().to_string();
-            let id = ui.get_editor_app_id().to_string();
-            let mut app = if id.is_empty() {
-                let settings = self.settings.read().unwrap().clone();
-                self.store.create_app(&name, &settings)?
-            } else {
-                self.store.ensure_unique_name(&name, Some(&id))?;
-                let mut app = self.app(&id).context("the app no longer exists")?;
-                anyhow::ensure!(!name.is_empty(), "the app name is empty");
-                app.name = name;
-                app
-            };
-            app.working_directory = ui.get_editor_working_directory().trim().to_string();
-            let build = ui.get_editor_build_script().to_string();
-            let run = ui.get_editor_run_script().to_string();
-            self.store.write_script(
-                &mut app,
-                "build",
-                &build.replace('\n', "\r\n").replace("\r\r\n", "\r\n"),
-            )?;
-            self.store.write_script(
-                &mut app,
-                "run",
-                &run.replace('\n', "\r\n").replace("\r\r\n", "\r\n"),
-            )?;
-            self.store.save_app(&app)?;
-            Ok(())
-        })();
-        match result {
-            Ok(()) => {
-                ui.set_editor_visible(false);
-                self.reload_apps();
-            }
-            Err(e) => ui.set_editor_error(format!("{e:#}").into()),
         }
     }
 

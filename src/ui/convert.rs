@@ -63,6 +63,17 @@ pub fn time_label(start: &DateTime<FixedOffset>) -> String {
     }
 }
 
+/// Short duration label: `850 ms`, `12.3 s`, `4 min 05 s`, `1 h 02 min`.
+pub fn duration_label(d: chrono::Duration) -> String {
+    let ms = d.num_milliseconds().max(0);
+    match ms {
+        0..1_000 => format!("{ms} ms"),
+        1_000..60_000 => format!("{:.1} s", ms as f64 / 1000.0),
+        60_000..3_600_000 => format!("{} min {:02} s", ms / 60_000, ms / 1000 % 60),
+        _ => format!("{} h {:02} min", ms / 3_600_000, ms / 60_000 % 60),
+    }
+}
+
 /// A run row for the navigation (`tab == false`) or the tab strip.
 pub fn run_row(info: &RunInfo, displayed: Option<&str>, tab: bool) -> RunRow {
     RunRow {

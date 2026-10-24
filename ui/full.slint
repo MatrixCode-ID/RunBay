@@ -4,6 +4,7 @@ import { ListView, LineEdit, TextEdit, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
 import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton } from "components.slint";
 import { Span, OutputRow, ActionButton, RunRow, AppRow } from "types.slint";
+import { EditorPage, SettingsPage, HistoryFlyout, AboutDialog } from "pages.slint";
 
 component OutputLineView inherits Rectangle {
     in property <OutputRow> line;
@@ -76,6 +77,7 @@ component AppCard inherits Rectangle {
     callback remove-app(string);
     callback open-working-directory(string);
     callback open-data-folder(string);
+    callback move-app(string, int);
 
     border-radius: Theme.corner-large;
     background: Theme.surface-container-low;
@@ -212,6 +214,16 @@ component AppCard inherits Rectangle {
                 icon: Icons.folder-open;
                 clicked => { root.open-working-directory(app.id); }
             }
+            if app.error == "": MenuItem {
+                text: "Move up";
+                icon: Icons.expand-more;
+                clicked => { root.move-app(app.id, -1); }
+            }
+            if app.error == "": MenuItem {
+                text: "Move down";
+                icon: Icons.expand-more;
+                clicked => { root.move-app(app.id, 1); }
+            }
             MenuItem {
                 text: "Open app data folder";
                 icon: Icons.folder;
@@ -271,14 +283,15 @@ export component MainWindow inherits Window {
     in property <string> agent-ask-operation;
     in property <bool> agent-ask-single;
 
-    // App editor (minimal in M1).
-    in-out property <bool> editor-visible;
-    in-out property <string> editor-app-id;
-    in-out property <string> editor-name;
-    in-out property <string> editor-working-directory;
-    in-out property <string> editor-build-script;
-    in-out property <string> editor-run-script;
-    in property <string> editor-error;
+    // "" (main view), "editor", or "settings".
+    in-out property <string> page;
+    in-out property <bool> history-open;
+    in-out property <bool> about-visible;
+    in property <string> update-text;
+    // Shown next to the version when an update is ready, e.g. "Update ready".
+    in property <string> update-badge;
+    in-out property <bool> exit-visible;
+    in property <string> exit-text;
 
     // whenRunning "ask" dialog.
     in-out property <bool> ask-visible;
@@ -296,7 +309,12 @@ export component MainWindow inherits Window {
     callback clear-output();
     callback add-app();
     callback edit-app(string);
-    callback save-editor();
+    callback move-app(string, int);
+    callback open-settings();
+    callback toggle-history();
+    callback about-notices();
+    callback check-updates();
+    callback exit-answer(string);
     callback remove-app(string);
     callback confirm-remove();
     callback ask-answer(string);
@@ -376,6 +394,24 @@ export component MainWindow inherits Window {
                         }
                     }
                 }
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    padding-bottom: 8px;
+                    spacing: 4px;
+                    SymbolButton {
+                        icon: Icons.history;
+                        label: "Action History";
+                        style: history-open ? "tonal" : "standard";
+                        clicked => { root.toggle-history(); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    SymbolButton {
+                        icon: Icons.settings;
+                        tooltip: "Settings";
+                        clicked => { root.open-settings(); }
+                    }
+                }
                 ListView {
                     vertical-stretch: 1;
                     for app in apps: VerticalLayout {
@@ -399,6 +435,7 @@ export component MainWindow inherits Window {
                             remove-app(a) => { root.remove-app(a); }
                             open-working-directory(a) => { root.open-working-directory(a); }
                             open-data-folder(a) => { root.open-data-folder(a); }
+                            move-app(a, d) => { root.move-app(a, d); }
                         }
                     }
                 }
@@ -419,13 +456,29 @@ export component MainWindow inherits Window {
                         mouse-cursor: pointer;
                         clicked => { root.version-clicked(); }
                     }
-                    Text {
-                        x: 16px;
-                        text: "RunBay " + version;
-                        color: version-touch.has-hover ? Theme.primary : Theme.on-surface-variant;
-                        font-size: Theme.label-medium;
-                        vertical-alignment: center;
-                        accessible-role: text;
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        spacing: 8px;
+                        alignment: start;
+                        Text {
+                            text: "RunBay " + version;
+                            color: version-touch.has-hover ? Theme.primary : Theme.on-surface-variant;
+                            font-size: Theme.label-medium;
+                            vertical-alignment: center;
+                            accessible-role: text;
+                        }
+                        if update-badge != "": Rectangle {
+                            y: (parent.height - self.height) / 2;
+                            height: 22px;
+                            width: badge-text.preferred-width + 16px;
+                            border-radius: 11px;
+                            background: Theme.tertiary-container;
+                            badge-text := Text {
+                                text: update-badge;
+                                color: Theme.on-tertiary-container;
+                                font-size: Theme.label-small;
+                            }
+                        }
                     }
                 }
             }
@@ -540,7 +593,18 @@ export component MainWindow inherits Window {
             }
             Rectangle { height: 12px; }
         }
-        Rectangle { width: 12px; }
+        Rectangle {
+            width: history-open ? 372px : 12px;
+            animate width { duration: Theme.motion-medium; easing: ease-out-back; }
+            clip: true;
+            if history-open: HistoryFlyout {
+                x: 12px;
+                y: 12px;
+                width: 348px;
+                height: parent.height - 24px;
+                close => { root.toggle-history(); }
+            }
+        }
     }
 
     // Snackbar.
@@ -576,50 +640,10 @@ export component MainWindow inherits Window {
         }
     }
 
-    if editor-visible: DialogFrame {
-        title: editor-app-id == "" ? "Add app" : "Edit app";
-        dialog-width: 560px;
-        dismissed => { editor-visible = false; }
-        Text { text: "Name"; color: Theme.on-surface-variant; font-size: Theme.label-medium; }
-        LineEdit {
-            text <=> editor-name;
-            placeholder-text: "My App";
-        }
-        Text { text: "Working directory"; color: Theme.on-surface-variant; font-size: Theme.label-medium; }
-        LineEdit {
-            text <=> editor-working-directory;
-            placeholder-text: "C:\\src\\my-app";
-        }
-        Text { text: "Build script (PowerShell)"; color: Theme.on-surface-variant; font-size: Theme.label-medium; }
-        TextEdit {
-            text <=> editor-build-script;
-            height: 90px;
-            font-size: Theme.mono-size;
-        }
-        Text { text: "Run script (PowerShell)"; color: Theme.on-surface-variant; font-size: Theme.label-medium; }
-        TextEdit {
-            text <=> editor-run-script;
-            height: 90px;
-            font-size: Theme.mono-size;
-        }
-        if editor-error != "": Text {
-            text: editor-error;
-            color: Theme.error;
-            wrap: word-wrap;
-        }
-        HorizontalLayout {
-            alignment: end;
-            spacing: 8px;
-            PillButton {
-                text: "Cancel";
-                clicked => { editor-visible = false; }
-            }
-            PillButton {
-                text: "Save";
-                style: "filled";
-                clicked => { root.save-editor(); }
-            }
-        }
+    if page == "editor": EditorPage { }
+
+    if page == "settings": SettingsPage {
+        close => { root.page = ""; }
     }
 
     if ask-visible: DialogFrame {
@@ -714,6 +738,37 @@ export component MainWindow inherits Window {
                 text: "Allow";
                 style: "filled";
                 clicked => { root.agent-ask-answer("allow"); }
+            }
+        }
+    }
+
+    if about-visible: AboutDialog {
+        version: version;
+        update-text: update-text;
+        dismissed => { root.about-visible = false; }
+        notices => { root.about-notices(); }
+        check-updates => { root.check-updates(); }
+    }
+
+    if exit-visible: DialogFrame {
+        title: "Exit RunBay?";
+        dismissed => { root.exit-answer("cancel"); }
+        Text {
+            text: exit-text;
+            color: Theme.on-surface-variant;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            PillButton {
+                text: "Cancel";
+                clicked => { root.exit-answer("cancel"); }
+            }
+            PillButton {
+                text: "Stop all and exit";
+                style: "danger";
+                clicked => { root.exit-answer("exit"); }
             }
         }
     }
