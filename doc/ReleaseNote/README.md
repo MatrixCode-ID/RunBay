@@ -23,8 +23,9 @@ Every RunBay version has one release note: `doc/ReleaseNote/<version>.md`, e.g.
 3. Merge `work-bench` into `main` and push `main` to `origin`.
 4. When the push changes `doc/ReleaseNote/**`, the
    [Release workflow](../../.github/workflows/release.yml) takes the single release
-   note without a `v<version>` tag, runs CI, builds `RunBay.exe` with that version, tags
-   `v<version>`, and publishes a GitHub Release with `RunBay.exe` and `SHA256SUMS`.
+   note without a `v<version>` tag, runs CI and builds `RunBay.exe` with that version in
+   parallel, and once both succeed tags `v<version>` and publishes a GitHub Release with
+   `RunBay.exe` and `SHA256SUMS`.
    The release note becomes the release body.
 
 A push without a release note change does not start the workflow, and a push that
