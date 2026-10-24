@@ -162,8 +162,30 @@ RunBay will be published as open source under the **MIT license**.
   must keep working in Windows PowerShell 5.1 and PowerShell 7, and its release
   selection must match the auto updater (§14 of the specification).
 
+## UI controls (user decisions 2026-10-24)
+
+- App action controls are centered, icon-only buttons with fixed square bounds;
+  More uses a small circular target. Action icons are configurable per action,
+  independently of the app avatar. See specification §§4.1, 6, and 7.
+- Standard actions may be removed per app and restored from Add action, which
+  offers only missing standard roles plus Custom action. All configured actions
+  appear directly as icon buttons in Full, Compact, and Icon. A three-dot menu
+  contains only actions that do not fit the available width (user decisions
+  2026-10-24). Folder-opening actions support the `folder_open` symbol.
+- Full, Compact, and Icon app cards expose Stop directly while actions are active;
+  status badges explain their meaning in tooltips.
+- Settings uses category navigation, a clear Back control, and an automatic-save
+  explanation. The Full navigation header has an icon button cycling System,
+  Light, and Dark themes. See specification §8.
+- Console output has its own theme button and saved Light / Dark / Follow UI
+  preference, shared by Full and Compact/Icon output views. Follow uses the
+  selected UI theme. See specification §§5.3 and 8.
+
 ## Code conventions
 
+- Run GUI checks in the background with offscreen rendering; do not take desktop
+  focus or drive the user's mouse/keyboard unless explicitly requested (user
+  decision 2026-10-24).
 - Follow `rustfmt` defaults and keep `cargo clippy` free of warnings.
 - Public items get English doc comments that explain what they do and why.
 - Respect the performance targets in the specification (fast startup, low

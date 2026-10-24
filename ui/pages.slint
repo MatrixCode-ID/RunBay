@@ -13,6 +13,7 @@ export struct EditorAction {
     id: string,
     name: string,
     kind: string,
+    icon-name: string,
     has-script: bool,
 }
 
@@ -43,6 +44,9 @@ export global EditorBridge {
     in-out property <string> working-directory;
     in-out property <int> shell-index;
     in-out property <string> action-name;
+    in-out property <[string]> action-icon-options;
+    in-out property <[string]> action-icon-names;
+    in-out property <int> action-icon-index;
     in-out property <string> script;
     in-out property <string> action-working-directory;
     in-out property <int> when-running-index;
@@ -60,7 +64,10 @@ export global EditorBridge {
     callback app-env-removed(int);
     callback app-env-added();
     callback select-action(int);
-    callback add-action();
+    in-out property <bool> can-add-build;
+    in-out property <bool> can-add-run;
+    in-out property <bool> can-add-build-run;
+    callback add-action(string);
     callback move-action(int);
     callback remove-action();
     callback action-env-edited(int, string, string);
@@ -72,10 +79,13 @@ export global EditorBridge {
 
 export global SettingsBridge {
     in-out property <int> theme-index;
+    in-out property <int> console-theme-index;
     in-out property <bool> autostart;
     in-out property <int> icon-size-index;
     in-out property <bool> top-compact;
     in-out property <bool> top-icon;
+    in-out property <bool> taskbar-full;
+    in-out property <bool> taskbar-compact;
     in-out property <string> line-limit;
     in-out property <int> when-running-index;
     in-out property <int> retention-build;
@@ -97,6 +107,7 @@ export global SettingsBridge {
     callback check-updates();
     callback data-custom-toggled();
     callback choose-data-folder();
+    callback copy-mcp-setup();
 }
 
 export global HistoryBridge {
@@ -178,6 +189,7 @@ export component EditorPage inherits Rectangle {
     in-out property <string> working-directory <=> EditorBridge.working-directory;
     in-out property <int> shell-index <=> EditorBridge.shell-index;
     in-out property <string> action-name <=> EditorBridge.action-name;
+    in-out property <int> action-icon-index <=> EditorBridge.action-icon-index;
     in-out property <string> script <=> EditorBridge.script;
     in-out property <string> action-working-directory <=> EditorBridge.action-working-directory;
     in-out property <int> when-running-index <=> EditorBridge.when-running-index;
@@ -205,8 +217,8 @@ export component EditorPage inherits Rectangle {
     app-env-added() => { EditorBridge.app-env-added(); }
     callback select-action(int);
     select-action(a0) => { EditorBridge.select-action(a0); }
-    callback add-action();
-    add-action() => { EditorBridge.add-action(); }
+    callback add-action(string);
+    add-action(kind) => { EditorBridge.add-action(kind); }
     callback move-action(int);
     move-action(a0) => { EditorBridge.move-action(a0); }
     callback remove-action();
@@ -362,10 +374,10 @@ export component EditorPage inherits Rectangle {
                                 padding-right: 8px;
                                 spacing: 8px;
                                 Image {
-                                    source: action.kind == "build" ? Icons.build
-                                        : action.kind == "run" ? Icons.play
-                                        : action.kind == "buildrun" ? Icons.rocket : Icons.terminal;
+                                    source: Icons.action-icon(action.icon-name);
                                     width: 18px;
+                                    height: 18px;
+                                    y: (parent.height - self.height) / 2;
                                     colorize: Theme.on-surface-variant;
                                 }
                                 Text {
@@ -386,9 +398,9 @@ export component EditorPage inherits Rectangle {
                         spacing: 2px;
                         SymbolButton {
                             icon: Icons.add;
-                            tooltip: "Add custom action";
+                            tooltip: "Add action";
                             size: 32px;
-                            clicked => { root.add-action(); }
+                            clicked => { add-action-menu.show(); }
                         }
                         SymbolButton {
                             icon: Icons.expand-more;
@@ -409,7 +421,7 @@ export component EditorPage inherits Rectangle {
                             icon: Icons.delete;
                             tooltip: "Remove action";
                             size: 32px;
-                            enabled: action-is-custom;
+                            enabled: actions.length > 0;
                             clicked => { root.remove-action(); }
                         }
                     }
@@ -421,13 +433,36 @@ export component EditorPage inherits Rectangle {
                 horizontal-stretch: 1;
                 border-radius: Theme.corner-large;
                 background: Theme.surface-container-low;
-                ScrollView {
+                if actions.length == 0: Text {
+                    text: "No actions. Use Add action to choose a default or custom action.";
+                    color: Theme.on-surface-variant;
+                    wrap: word-wrap;
+                }
+                if actions.length > 0: ScrollView {
                     VerticalLayout {
                         padding: 16px;
                         spacing: 8px;
                         alignment: start;
                         FieldLabel { text: "Action name"; }
                         LineEdit { text <=> action-name; }
+                        FieldLabel { text: "Action icon"; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Image {
+                                source: action-icon-index == 0
+                                    ? Icons.default-action-icon(actions[selected-action].kind)
+                                    : Icons.action-icon(EditorBridge.action-icon-names[action-icon-index]);
+                                width: 24px;
+                                height: 24px;
+                                y: (parent.height - self.height) / 2;
+                                colorize: Theme.on-surface-variant;
+                            }
+                            ComboBox {
+                                model: EditorBridge.action-icon-options;
+                                current-index <=> action-icon-index;
+                                horizontal-stretch: 1;
+                            }
+                        }
                         if !action-is-build-run: HorizontalLayout {
                             spacing: 8px;
                             FieldLabel {
@@ -493,38 +528,73 @@ export component EditorPage inherits Rectangle {
             }
         }
     }
-}
-
-component SettingRow inherits HorizontalLayout {
-    in property <string> label;
-    in property <string> hint;
-    spacing: 16px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-    VerticalLayout {
-        alignment: center;
-        horizontal-stretch: 1;
-        Text {
-            text: label;
-            color: Theme.on-surface;
-            font-size: Theme.body-large;
-        }
-        if hint != "": Text {
-            text: hint;
-            color: Theme.on-surface-variant;
-            font-size: Theme.body-small;
-            wrap: word-wrap;
+    add-action-menu := PopupWindow {
+        x: 280px;
+        y: max(0px, root.height - 210px);
+        width: 210px;
+        Rectangle {
+            background: Theme.surface-container-high;
+            border-radius: Theme.corner-medium;
+            VerticalLayout {
+                padding: 8px;
+                spacing: 2px;
+                if EditorBridge.can-add-build: PillButton {
+                    text: "Build";
+                    clicked => { add-action-menu.close(); root.add-action("build"); }
+                }
+                if EditorBridge.can-add-run: PillButton {
+                    text: "Run";
+                    clicked => { add-action-menu.close(); root.add-action("run"); }
+                }
+                if EditorBridge.can-add-build-run: PillButton {
+                    text: "Build + Run";
+                    clicked => { add-action-menu.close(); root.add-action("buildRun"); }
+                }
+                PillButton {
+                    text: "Custom action";
+                    clicked => { add-action-menu.close(); root.add-action("custom"); }
+                }
+            }
         }
     }
-    @children
+
+}
+
+// A setting keeps its label, explanation, and controls together, even at narrow widths.
+component SettingRow inherits VerticalLayout {
+    in property <string> label;
+    in property <string> hint;
+    spacing: 6px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    Text {
+        text: label;
+        color: Theme.on-surface;
+        font-size: Theme.body-large;
+        wrap: word-wrap;
+    }
+    if hint != "": Text {
+        text: hint;
+        color: Theme.on-surface-variant;
+        font-size: Theme.body-small;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: start;
+        @children
+    }
 }
 
 export component SettingsPage inherits Rectangle {
     in-out property <int> theme-index <=> SettingsBridge.theme-index;
+    in-out property <int> console-theme-index <=> SettingsBridge.console-theme-index;
     in-out property <bool> autostart <=> SettingsBridge.autostart;
     in-out property <int> icon-size-index <=> SettingsBridge.icon-size-index;
     in-out property <bool> top-compact <=> SettingsBridge.top-compact;
     in-out property <bool> top-icon <=> SettingsBridge.top-icon;
+    in-out property <bool> taskbar-full <=> SettingsBridge.taskbar-full;
+    in-out property <bool> taskbar-compact <=> SettingsBridge.taskbar-compact;
     in-out property <string> line-limit <=> SettingsBridge.line-limit;
     in-out property <int> when-running-index <=> SettingsBridge.when-running-index;
     in-out property <int> retention-build <=> SettingsBridge.retention-build;
@@ -552,167 +622,297 @@ export component SettingsPage inherits Rectangle {
     callback choose-data-folder();
     choose-data-folder() => { SettingsBridge.choose-data-folder(); }
 
+    property <int> category: 0;
+    property <[string]> categories: ["Appearance", "Startup & data", "Action defaults", "Updates", "Agents"];
+    property <[image]> category-icons: [Icons.compact, Icons.folder, Icons.terminal, Icons.download, Icons.agent];
+    property <[string]> descriptions: [
+        "Choose how RunBay looks and behaves on your desktop.",
+        "Choose when RunBay starts and where it keeps your apps and history.",
+        "Defaults for newly created actions. Edit existing actions in the app editor.",
+        "Manage automatic updates and check for a new version.",
+        "Choose what connected coding agents may do in RunBay."
+    ];
+
     background: Theme.surface;
     TouchArea { }
-
     VerticalLayout {
+        padding: 20px;
+        spacing: 20px;
         HorizontalLayout {
-            padding: 16px;
-            spacing: 8px;
-            SymbolButton {
-                icon: Icons.close;
-                tooltip: "Close settings";
+            spacing: 16px;
+            PillButton {
+                text: "Back";
+                style: "tonal";
                 clicked => { root.close(); }
             }
-            Text {
-                text: "Settings";
-                font-size: Theme.title-large;
-                color: Theme.on-surface;
-                vertical-alignment: center;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2px;
+                Text {
+                    text: "Settings";
+                    font-size: Theme.title-large;
+                    font-weight: 600;
+                    color: Theme.on-surface;
+                }
+                Text {
+                    text: "Changes are saved automatically.";
+                    font-size: Theme.body-small;
+                    color: Theme.on-surface-variant;
+                }
             }
         }
-        ScrollView {
+        HorizontalLayout {
+            spacing: 16px;
             vertical-stretch: 1;
-            HorizontalLayout {
-                alignment: center;
-                VerticalLayout {
-                    width: min(640px, root.width - 32px);
-                    spacing: 4px;
-                    padding-bottom: 24px;
-                    SectionTitle { text: "Appearance"; }
-                    SettingRow {
-                        label: "Theme";
-                        ComboBox {
-                            width: 200px;
-                            model: ["Follow Windows", "Light", "Dark"];
-                            current-index <=> theme-index;
-                            selected => { root.changed(); }
+            VerticalLayout {
+                width: 156px;
+                spacing: 4px;
+                alignment: start;
+                for title[index] in root.categories: Rectangle {
+                    height: 44px;
+                    border-radius: Theme.corner-medium;
+                    background: root.category == index ? Theme.secondary-container
+                        : nav-touch.has-hover ? Theme.surface-container-high : transparent;
+                    accessible-role: button;
+                    accessible-label: title;
+                    accessible-action-default => { root.category = index; }
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 8px;
+                        spacing: 10px;
+                        Image {
+                            source: root.category-icons[index];
+                            width: 20px;
+                            height: 20px;
+                            y: (parent.height - self.height) / 2;
+                            colorize: root.category == index ? Theme.on-secondary-container : Theme.on-surface-variant;
+                        }
+                        Text {
+                            text: title;
+                            font-size: Theme.label-medium;
+                            font-weight: root.category == index ? 600 : 400;
+                            color: root.category == index ? Theme.on-secondary-container : Theme.on-surface-variant;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
                         }
                     }
-                    SettingRow {
-                        label: "Floating icon size";
-                        ComboBox {
-                            width: 200px;
-                            model: ["Small (40 px)", "Medium (56 px)", "Large (72 px)"];
-                            current-index <=> icon-size-index;
-                            selected => { root.changed(); }
-                        }
+                    nav-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.category = index; }
                     }
-                    SettingRow {
-                        label: "Always on top in Compact mode";
-                        Switch {
-                            checked <=> top-compact;
-                            toggled => { root.changed(); }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: Theme.surface-container-low;
+                border-radius: Theme.corner-large;
+                ScrollView {
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 8px;
+                        alignment: start;
+                        Text {
+                            text: root.categories[root.category];
+                            font-size: Theme.title-large;
+                            font-weight: 600;
+                            color: Theme.on-surface;
                         }
-                    }
-                    SettingRow {
-                        label: "Always on top in Icon mode";
-                        Switch {
-                            checked <=> top-icon;
-                            toggled => { root.changed(); }
+                        Text {
+                            text: root.descriptions[root.category];
+                            color: Theme.on-surface-variant;
+                            font-size: Theme.body-medium;
+                            wrap: word-wrap;
                         }
-                    }
-                    SettingRow {
-                        label: "On-screen output line limit";
-                        hint: "Lines kept on screen per run; the log file stays complete.";
-                        LineEdit {
-                            width: 200px;
-                            text <=> line-limit;
-                            input-type: number;
-                            edited => { root.changed(); }
-                        }
-                    }
-                    SectionTitle { text: "Startup"; }
-                    SettingRow {
-                        label: "Load with Windows";
-                        hint: "Starts RunBay at sign-in in the last mode and position.";
-                        Switch {
-                            checked <=> autostart;
-                            toggled => { root.changed(); }
-                        }
-                    }
-                    SectionTitle { text: "Data"; }
-                    SettingRow {
-                        label: "Use another data folder";
-                        hint: data-hint;
-                        CheckBox {
-                            checked <=> data-custom;
-                            enabled: !data-locked;
-                            toggled => { root.data-custom-toggled(); }
-                        }
-                        PillButton {
-                            text: "Choose folder";
-                            style: "tonal";
-                            enabled: data-custom && !data-locked;
-                            clicked => { root.choose-data-folder(); }
-                        }
-                    }
-                    SectionTitle { text: "New actions"; }
-                    SettingRow {
-                        label: "When the app is still running";
-                        ComboBox {
-                            width: 200px;
-                            model: ["Ask", "Reject", "Stop and restart", "Run in parallel"];
-                            current-index <=> when-running-index;
-                            selected => { root.changed(); }
-                        }
-                    }
-                    for item in [
-                        { label: "Build history", kind: 0 },
-                        { label: "Run history", kind: 1 },
-                        { label: "Build + Run history", kind: 2 },
-                        { label: "Custom action history", kind: 3 },
-                    ]: SettingRow {
-                        label: item.label;
-                        ComboBox {
-                            width: 200px;
-                            model: ["Off", "Keep the last runs", "Forever"];
-                            current-index: item.kind == 0 ? retention-build : item.kind == 1 ? retention-run : item.kind == 2 ? retention-build-run : retention-custom;
-                            selected => {
-                                if (item.kind == 0) { retention-build = self.current-index; }
-                                if (item.kind == 1) { retention-run = self.current-index; }
-                                if (item.kind == 2) { retention-build-run = self.current-index; }
-                                if (item.kind == 3) { retention-custom = self.current-index; }
-                                root.changed();
+                        if root.category == 0: VerticalLayout {
+                            spacing: 4px;
+                            alignment: start;
+                            SettingRow {
+                                label: "Theme";
+                                ComboBox {
+                                    width: 200px;
+                                    model: ["Follow Windows", "Light", "Dark"];
+                                    current-index <=> theme-index;
+                                    selected => { root.changed(); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Console theme";
+                                hint: "Only output views; Follow uses the theme selected for the UI.";
+                                ComboBox {
+                                    width: 200px;
+                                    model: ["Follow UI", "Light", "Dark"];
+                                    current-index <=> console-theme-index;
+                                    selected => { root.changed(); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Floating icon size";
+                                ComboBox {
+                                    width: 200px;
+                                    model: ["Small (40 px)", "Medium (56 px)", "Large (72 px)"];
+                                    current-index <=> icon-size-index;
+                                    selected => { root.changed(); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Always on top in Compact mode";
+                                Switch {
+                                    checked <=> top-compact;
+                                    toggled => { root.changed(); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Always on top in Icon mode";
+                                Switch {
+                                    checked <=> top-icon;
+                                    toggled => { root.changed(); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Taskbar icon in Full mode";
+                                hint: "When off, use the tray icon to open RunBay.";
+                                Switch {
+                                    checked <=> taskbar-full;
+                                    toggled => { root.changed(); }
+                                }
+                            }
+                            SettingRow {
+                                label: "Taskbar icon in Compact mode";
+                                hint: "When off, use the tray icon to open RunBay.";
+                                Switch {
+                                    checked <=> taskbar-compact;
+                                    toggled => { root.changed(); }
+                                }
+                            }
+                            SettingRow {
+                                label: "On-screen output line limit";
+                                hint: "Lines kept on screen per run; the log file stays complete.";
+                                LineEdit {
+                                    width: 200px;
+                                    text <=> line-limit;
+                                    input-type: number;
+                                    edited => { root.changed(); }
+                                }
                             }
                         }
-                        LineEdit {
-                            width: 80px;
-                            input-type: number;
-                            enabled: (item.kind == 0 ? retention-build : item.kind == 1 ? retention-run : item.kind == 2 ? retention-build-run : retention-custom) == 1;
-                            text: item.kind == 0 ? count-build : item.kind == 1 ? count-run : item.kind == 2 ? count-build-run : count-custom;
-                            edited(text) => {
-                                if (item.kind == 0) { count-build = text; }
-                                if (item.kind == 1) { count-run = text; }
-                                if (item.kind == 2) { count-build-run = text; }
-                                if (item.kind == 3) { count-custom = text; }
-                                root.changed();
+                        if root.category == 1: VerticalLayout {
+                            spacing: 4px;
+                            alignment: start;
+                            SettingRow {
+                                label: "Load with Windows";
+                                hint: "Starts RunBay at sign-in in the last mode and position.";
+                                Switch {
+                                    checked <=> autostart;
+                                    toggled => { root.changed(); }
+                                }
+                            }
+                            SectionTitle { text: "Data"; }
+                            SettingRow {
+                                label: "Use another data folder";
+                                hint: data-hint;
+                                CheckBox {
+                                    checked <=> data-custom;
+                                    enabled: !data-locked;
+                                    toggled => { root.data-custom-toggled(); }
+                                }
+                                PillButton {
+                                    text: "Choose folder";
+                                    style: "tonal";
+                                    enabled: data-custom && !data-locked;
+                                    clicked => { root.choose-data-folder(); }
+                                }
                             }
                         }
-                    }
-                    SectionTitle { text: "Updates"; }
-                    SettingRow {
-                        label: "Update automatically";
-                        hint: update-status;
-                        Switch {
-                            checked <=> auto-update;
-                            toggled => { root.changed(); }
+                        if root.category == 2: VerticalLayout {
+                            spacing: 4px;
+                            alignment: start;
+                            SettingRow {
+                                label: "When the app is still running";
+                                ComboBox {
+                                    width: 200px;
+                                    model: ["Ask", "Reject", "Stop and restart", "Run in parallel"];
+                                    current-index <=> when-running-index;
+                                    selected => { root.changed(); }
+                                }
+                            }
+                            for item in [
+                                { label: "Build history", kind: 0 },
+                                { label: "Run history", kind: 1 },
+                                { label: "Build + Run history", kind: 2 },
+                                { label: "Custom action history", kind: 3 },
+                            ]: SettingRow {
+                                label: item.label;
+                                ComboBox {
+                                    width: 200px;
+                                    model: ["Off", "Keep the last runs", "Forever"];
+                                    current-index: item.kind == 0 ? retention-build : item.kind == 1 ? retention-run : item.kind == 2 ? retention-build-run : retention-custom;
+                                    selected => {
+                                        if (item.kind == 0) { retention-build = self.current-index; }
+                                        if (item.kind == 1) { retention-run = self.current-index; }
+                                        if (item.kind == 2) { retention-build-run = self.current-index; }
+                                        if (item.kind == 3) { retention-custom = self.current-index; }
+                                        root.changed();
+                                    }
+                                }
+                                LineEdit {
+                                    width: 80px;
+                                    input-type: number;
+                                    enabled: (item.kind == 0 ? retention-build : item.kind == 1 ? retention-run : item.kind == 2 ? retention-build-run : retention-custom) == 1;
+                                    text: item.kind == 0 ? count-build : item.kind == 1 ? count-run : item.kind == 2 ? count-build-run : count-custom;
+                                    edited(text) => {
+                                        if (item.kind == 0) { count-build = text; }
+                                        if (item.kind == 1) { count-run = text; }
+                                        if (item.kind == 2) { count-build-run = text; }
+                                        if (item.kind == 3) { count-custom = text; }
+                                        root.changed();
+                                    }
+                                }
+                            }
                         }
-                        PillButton {
-                            text: "Check now";
-                            style: "tonal";
-                            clicked => { root.check-updates(); }
+                        if root.category == 3: VerticalLayout {
+                            spacing: 4px;
+                            alignment: start;
+                            SettingRow {
+                                label: "Update automatically";
+                                hint: update-status;
+                                Switch {
+                                    checked <=> auto-update;
+                                    toggled => { root.changed(); }
+                                }
+                                PillButton {
+                                    text: "Check now";
+                                    style: "tonal";
+                                    clicked => { root.check-updates(); }
+                                }
+                            }
                         }
-                    }
-                    SectionTitle { text: "Agents (MCP)"; }
-                    SettingRow {
-                        label: "MCP access";
-                        hint: "What coding agents may do through RunBay.exe --mcp.";
-                        ComboBox {
-                            width: 200px;
-                            model: ["Off", "Ask first", "Unrestricted"];
-                            current-index <=> mcp-index;
-                            selected => { root.changed(); }
+                        if root.category == 4: VerticalLayout {
+                            spacing: 4px;
+                            alignment: start;
+                            SettingRow {
+                                label: "MCP access";
+                                hint: "What coding agents may do through RunBay.exe --mcp.";
+                                ComboBox {
+                                    width: 200px;
+                                    model: ["Off", "Ask first", "Unrestricted"];
+                                    current-index <=> mcp-index;
+                                    selected => { root.changed(); }
+                                }
+                            }
+                            Text {
+                                text: "Copy setup instructions to paste into Claude Desktop or Codex.";
+                                color: Theme.on-surface-variant;
+                                font-size: Theme.body-small;
+                                wrap: word-wrap;
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                PillButton {
+                                    text: "Copy MCP setup instructions";
+                                    style: "tonal";
+                                    clicked => { SettingsBridge.copy-mcp-setup(); }
+                                }
+                            }
                         }
                     }
                 }

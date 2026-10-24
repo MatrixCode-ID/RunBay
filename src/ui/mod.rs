@@ -6,6 +6,7 @@ mod convert;
 mod editor;
 mod history;
 mod lifecycle;
+mod mcp_setup;
 mod modes;
 mod output_selection;
 mod selection;
@@ -29,7 +30,7 @@ use crate::ipc::host::Host;
 use crate::ipc::{self, Hello, pipe::PipeListener};
 use crate::platform;
 use crate::runner::{OutputLine, Run, RunEvent, RunManager, RunRequest, StartOutcome};
-use crate::{ActionButton, AppRow, MainWindow, OutputRow, RunRow, Theme};
+use crate::{ActionButton, AppRow, MainWindow, OutputRow, RunRow};
 
 /// How RunBay was started.
 #[derive(Debug, Clone, Default)]
@@ -100,7 +101,6 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
             popup: crate::IconPopup::new().context("cannot create the Icon popup")?,
         },
         popup_timer: RefCell::new(None),
-        theme_overridden: std::cell::Cell::new(false),
         update: RefCell::new(updates::UpdateUi::default()),
         update_timer: RefCell::new(None),
         restart_args: if options.custom_data_dir {
@@ -234,8 +234,6 @@ struct Controller {
     modes: modes::ModeWindows,
     icon_timer: RefCell<Option<Rc<slint::Timer>>>,
     popup_timer: RefCell<Option<Rc<slint::Timer>>>,
-    /// A theme override was applied (switching back to "Follow Windows" must reset it).
-    theme_overridden: std::cell::Cell<bool>,
     update: RefCell<updates::UpdateUi>,
     update_timer: RefCell<Option<Rc<slint::Timer>>>,
     /// Arguments passed again when RunBay restarts itself.
@@ -251,25 +249,37 @@ impl Controller {
 
     fn apply_theme(&self) {
         let ui = self.ui();
-        let scheme = match self.settings.read().unwrap().theme {
-            ThemePref::System => None,
-            ThemePref::Light => Some(false),
-            ThemePref::Dark => Some(true),
+        let mode = match self.settings.read().unwrap().theme {
+            ThemePref::System => 0,
+            ThemePref::Light => 1,
+            ThemePref::Dark => 2,
         };
-        // Following Windows after an override needs the current Windows theme.
-        let dark = scheme.unwrap_or_else(platform::system_is_dark);
-        let was_overridden = self.theme_overridden.replace(scheme.is_some());
-        if scheme.is_some() || was_overridden {
-            ui.invoke_set_dark(dark);
-            self.modes.compact.invoke_set_dark(dark);
-            self.modes.icon.invoke_set_dark(dark);
-            self.modes.popup.invoke_set_dark(dark);
-        }
+        ui.set_theme_mode(mode);
+        ui.global::<crate::SettingsBridge>().set_theme_index(mode);
+        ui.invoke_set_theme(mode);
+        self.modes.compact.invoke_set_theme(mode);
+        self.modes.icon.invoke_set_theme(mode);
+        self.modes.popup.invoke_set_theme(mode);
+        self.apply_console_theme();
     }
 
     fn bind_callbacks(self: &Rc<Self>, ui: &MainWindow) {
         let weak = Rc::downgrade(self);
         let c = move || weak.upgrade();
+        {
+            let c = c.clone();
+            ui.on_cycle_theme(move || {
+                if let Some(c) = c() {
+                    let mut settings = c.settings.read().unwrap().clone();
+                    settings.theme = match settings.theme {
+                        ThemePref::System => ThemePref::Light,
+                        ThemePref::Light => ThemePref::Dark,
+                        ThemePref::Dark => ThemePref::System,
+                    };
+                    c.apply_settings(settings);
+                }
+            });
+        }
         {
             let c = c.clone();
             ui.on_run_action(move |app, action| {
@@ -292,6 +302,14 @@ impl Controller {
             ui.on_stop_run(move |run| {
                 if let Some(c) = c() {
                     c.manager.stop(&run);
+                }
+            });
+        }
+        {
+            let c = c.clone();
+            ui.on_stop_app(move |app| {
+                if let Some(c) = c() {
+                    c.stop_app(&app);
                 }
             });
         }
@@ -578,6 +596,12 @@ impl Controller {
         self.refresh_nav();
     }
 
+    fn stop_app(&self, app_id: &str) {
+        for run in self.manager.active_for_app(app_id) {
+            run.stop();
+        }
+    }
+
     fn answer_ask(&self, answer: &str) {
         let ui = self.ui();
         ui.set_ask_visible(false);
@@ -635,7 +659,6 @@ impl Controller {
     }
 
     fn append_lines(&self, lines: &[OutputLine]) {
-        let dark = self.ui().global::<Theme>().get_dark();
         let mut st = self.state.borrow_mut();
         let limit = self.settings.read().unwrap().output_line_limit.max(100) as usize;
         let mut columns = st.columns;
@@ -643,7 +666,7 @@ impl Controller {
             .iter()
             .map(|line| {
                 let index = st.selection.next();
-                let row = convert::output_row(&mut st.parser, line, dark, index);
+                let row = convert::output_row(&mut st.parser, line, index);
                 columns = columns.max(row.plain_text.chars().count());
                 st.selection.lines.push_back(row.plain_text.to_string());
                 row
@@ -896,6 +919,7 @@ impl Controller {
                 id: action.id.clone().into(),
                 name: action.name.clone().into(),
                 kind: format!("{:?}", action.kind).to_lowercase().into(),
+                icon_name: action.icon_name().into(),
                 enabled,
                 status: if running.is_some() { "running" } else { "" }.into(),
                 busy: active_infos
@@ -904,12 +928,7 @@ impl Controller {
                 agent: running.is_some_and(|r| r.agent.is_some()),
             }
         };
-        let customs: Vec<ActionButton> = app
-            .actions
-            .iter()
-            .filter(|a| a.kind == ActionKind::Custom)
-            .map(|a| button(Some(a)))
-            .collect();
+        let actions: Vec<ActionButton> = app.actions.iter().map(|a| button(Some(a))).collect();
 
         // Runs below the app: every active run, then the newest finished ones, up to 3.
         let mut runs: Vec<RunRow> = active_infos
@@ -968,6 +987,29 @@ impl Controller {
             None => (slint::Image::default(), false),
         };
 
+        let status_detail = if let Some(info) = badge_info {
+            format!(
+                "{}: {} ({} active)",
+                info.action_name,
+                if info.is_busy() {
+                    "Working"
+                } else {
+                    "Application running"
+                },
+                active_infos.len()
+            )
+        } else if let Some(run) = runs.first() {
+            let result = match run.status.as_str() {
+                "success" => "Succeeded",
+                "failed" => "Failed",
+                "stopped" => "Stopped",
+                _ => run.status.as_str(),
+            };
+            format!("Last run: {} · {result} · {}", run.title, run.time)
+        } else {
+            String::new()
+        };
+
         AppRow {
             id: app.id.clone().into(),
             name: app.name.clone().into(),
@@ -978,15 +1020,13 @@ impl Controller {
             status: status.into(),
             status_agent,
             status_busy: active_infos.iter().any(|info| info.is_busy()),
+            status_detail: status_detail.into(),
             agent: agent
                 .filter(|a| !a.is_empty() && status_agent)
                 .unwrap_or_default()
                 .into(),
             error: SharedString::new(),
-            build: button(app.action_of(ActionKind::Build)),
-            run: button(app.action_of(ActionKind::Run)),
-            build_run: button(app.action_of(ActionKind::BuildRun)),
-            customs: ModelRc::new(VecModel::from(customs)),
+            actions: ModelRc::new(VecModel::from(actions)),
             runs: ModelRc::new(VecModel::from(runs)),
         }
     }

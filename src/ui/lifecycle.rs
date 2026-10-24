@@ -213,6 +213,7 @@ impl Controller {
     pub(super) fn focus_full(&self) {
         let ui = self.ui();
         let _ = ui.show();
+        self.apply_taskbar_buttons();
         if self.state.borrow().full_maximized {
             ui.window().set_maximized(true);
             self.state.borrow_mut().full_maximized = false;

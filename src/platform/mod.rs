@@ -79,6 +79,37 @@ pub fn set_tool_window(hwnd: isize) {
     }
 }
 
+/// Shows or hides the taskbar button of a Full or Compact window. A visible window is
+/// hidden and shown again without activation, because the taskbar only reads the
+/// extended style when a window appears.
+pub fn set_taskbar_button(hwnd: isize, visible: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetWindowLongPtrW, IsWindowVisible, SW_HIDE, SW_SHOWNA, SetWindowLongPtrW,
+        WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    };
+    let hwnd = HWND(hwnd as *mut _);
+    // SAFETY: plain style change on a window owned by this process.
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let new = if visible {
+            (style | WS_EX_APPWINDOW.0 as isize) & !(WS_EX_TOOLWINDOW.0 as isize)
+        } else {
+            (style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize)
+        };
+        if new == style {
+            return;
+        }
+        let shown = IsWindowVisible(hwnd).as_bool();
+        if shown {
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
+        if shown {
+            let _ = ShowWindow(hwnd, SW_SHOWNA);
+        }
+    }
+}
+
 /// The window that has the keyboard focus.
 pub fn foreground_window() -> isize {
     use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;

@@ -27,21 +27,27 @@ pub fn initial(name: &str) -> String {
 }
 
 /// Converts one output line into styled spans.
-pub fn output_row(parser: &mut AnsiParser, line: &OutputLine, dark: bool, index: u64) -> OutputRow {
+pub fn output_row(parser: &mut AnsiParser, line: &OutputLine, index: u64) -> OutputRow {
     let spans: Vec<Span> = parser
         .parse_line(&line.text)
         .into_iter()
         .map(|s| {
-            let (colored, color) = match s.fg {
+            let (colored, color, dark_color) = match s.fg {
                 Some(c) => {
-                    let (r, g, b) = c.to_rgb(dark);
-                    (true, slint::Color::from_rgb_u8(r, g, b))
+                    let (r, g, b) = c.to_rgb(false);
+                    let (dr, dg, db) = c.to_rgb(true);
+                    (
+                        true,
+                        slint::Color::from_rgb_u8(r, g, b),
+                        slint::Color::from_rgb_u8(dr, dg, db),
+                    )
                 }
-                None => (false, slint::Color::default()),
+                None => (false, slint::Color::default(), slint::Color::default()),
             };
             Span {
                 text: s.text.into(),
                 color,
+                dark_color,
                 colored,
                 bold: s.bold,
             }
@@ -110,5 +116,32 @@ pub fn record_row(record: &RunRecord, action_name: &str, displayed: Option<&str>
         agent: record.agent.clone().unwrap_or_default().into(),
         time: time_label(&record.start).into(),
         selected: displayed == Some(record.run_id.as_str()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slint::Model;
+
+    #[test]
+    fn output_keeps_both_palettes_and_preserves_explicit_colors() {
+        let mut parser = AnsiParser::new();
+        let row = output_row(
+            &mut parser,
+            &OutputLine {
+                text: "\x1b[31mred\x1b[38;5;200mindexed\x1b[38;2;12;34;56mrgb\x1b[0mplain".into(),
+                stderr: false,
+            },
+            42,
+        );
+        assert_eq!(row.plain_text, "redindexedrgbplain");
+        assert_eq!(row.run_index, 42);
+        let spans: Vec<_> = row.spans.iter().collect();
+        assert_ne!(spans[0].color, spans[0].dark_color);
+        assert_eq!(spans[1].color, spans[1].dark_color);
+        assert_eq!(spans[2].color, slint::Color::from_rgb_u8(12, 34, 56));
+        assert_eq!(spans[2].color, spans[2].dark_color);
+        assert!(!spans[3].colored);
     }
 }

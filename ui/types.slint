@@ -4,6 +4,7 @@
 export struct Span {
     text: string,
     color: color,
+    dark-color: color,
     colored: bool,
     bold: bool,
 }
@@ -23,6 +24,7 @@ export struct ActionButton {
     id: string,
     name: string,
     kind: string,
+    icon-name: string,
     enabled: bool,
     // "running" while one of its runs is active, otherwise "".
     status: string,
@@ -55,11 +57,9 @@ export struct AppRow {
     status: string,
     status-agent: bool,
     status-busy: bool,
+    status-detail: string,
     agent: string,
     error: string,
-    build: ActionButton,
-    run: ActionButton,
-    build-run: ActionButton,
-    customs: [ActionButton],
+    actions: [ActionButton],
     runs: [RunRow],
 }

@@ -173,6 +173,27 @@ fn agent_can_manage_and_run_apps() {
     assert!(!err, "{created}");
     let app_id = created["app"]["id"].as_str().unwrap().to_string();
 
+    let (err, updated) = client.call(
+        "set_action",
+        json!({ "app_id": app_id, "action_id": "build", "icon": "rocket_launch" }),
+    );
+    assert!(!err, "{updated}");
+    assert_eq!(updated["action"]["icon"], "rocket_launch");
+    let (err, loaded) = client.call("get_app", json!({ "app_id": app_id }));
+    assert!(!err, "{loaded}");
+    assert_eq!(loaded["actions"][0]["icon"], "rocket_launch");
+    let (err, _) = client.call(
+        "set_action",
+        json!({ "app_id": app_id, "action_id": "build", "icon": "unknown_symbol" }),
+    );
+    assert!(err);
+    let (err, reset) = client.call(
+        "set_action",
+        json!({ "app_id": app_id, "action_id": "build", "icon": null }),
+    );
+    assert!(!err, "{reset}");
+    assert!(reset["action"]["icon"].is_null());
+
     let (err, _) = client.call(
         "set_action",
         json!({ "app_id": app_id, "action_id": "build",
@@ -270,6 +291,32 @@ fn agent_can_manage_and_run_apps() {
     assert!(!err);
     assert_eq!(settings["outputLineLimit"], 5000);
 
+    let (err, settings) = client.call(
+        "update_settings",
+        json!({ "theme": "light", "console_theme": "dark" }),
+    );
+    assert!(!err);
+    assert_eq!(settings["theme"], "light");
+    assert_eq!(settings["consoleTheme"], "dark");
+    let (err, settings) = client.call("get_settings", json!({}));
+    assert!(!err);
+    assert_eq!(settings["consoleTheme"], "dark");
+    let (err, _) = client.call("update_settings", json!({ "console_theme": "system" }));
+    assert!(err);
+    let (err, settings) = client.call("update_settings", json!({ "console_theme": "follow" }));
+    assert!(!err);
+    assert_eq!(settings["consoleTheme"], "follow");
+    assert_eq!(settings["theme"], "light");
+    assert_eq!(settings["taskbarFull"], true);
+    assert_eq!(settings["taskbarCompact"], true);
+    let (err, settings) = client.call(
+        "update_settings",
+        json!({ "taskbar_full": false, "taskbar_compact": false }),
+    );
+    assert!(!err);
+    assert_eq!(settings["taskbarFull"], false);
+    assert_eq!(settings["taskbarCompact"], false);
+
     // History on disk records the agent.
     let index = std::fs::read_to_string(
         data.join("apps")
@@ -290,6 +337,82 @@ fn access_off_refuses_every_tool() {
     let (err, text) = client.call("list_apps", json!({}));
     assert!(err);
     assert_eq!(text, "MCP access is turned off in RunBay");
+}
+
+#[test]
+fn agents_can_remove_and_restore_standard_actions() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = std::path::absolute(dir.path().join("data")).unwrap();
+    let _instance = Instance::start(&data, "unrestricted");
+    let mut client = Client::connect(&data);
+    let (err, created) = client.call("create_app", json!({"name": "Flexible App"}));
+    assert!(!err, "{created}");
+    let id = created["app"]["id"].as_str().unwrap();
+    for action in ["build", "run", "build-run"] {
+        let (err, value) = client.call("delete_action", json!({"app_id": id, "action_id": action}));
+        assert!(!err, "{value}");
+    }
+    let (err, empty) = client.call("get_app", json!({"app_id": id}));
+    assert!(!err, "{empty}");
+    assert_eq!(empty["actions"], json!([]));
+    let (err, build) = client.call(
+        "set_action",
+        json!({"app_id": id, "kind": "build", "script": "Write-Output 'restored'"}),
+    );
+    assert!(!err, "{build}");
+    assert_eq!(build["action"]["kind"], "build");
+    let (err, _) = client.call(
+        "set_action",
+        json!({"app_id": id, "action_id": "another-build", "kind": "build"}),
+    );
+    assert!(err);
+    let (err, _) = client.call(
+        "set_action",
+        json!({"app_id": id, "action_id": "build", "kind": "run"}),
+    );
+    assert!(err);
+    let (err, run) = client.call(
+        "set_action",
+        json!({"app_id": id, "action_id": "run", "script": "Start-Sleep -Seconds 30"}),
+    );
+    assert!(!err, "{run}");
+    assert_eq!(run["action"]["kind"], "run");
+    let (err, started) = client.call("run_action", json!({"app_id": id, "action_id": "run"}));
+    assert!(!err, "{started}");
+    let run_id = started["run_id"].as_str().unwrap();
+    let (err, blocked) = client.call("delete_action", json!({"app_id": id, "action_id": "run"}));
+    assert!(
+        err && blocked.as_str().unwrap().contains("stop the action"),
+        "{blocked}"
+    );
+    let (err, _) = client.call("stop_run", json!({"run_id": run_id}));
+    assert!(!err);
+    let (err, _) = client.call("wait_run", json!({"run_id": run_id, "timeout_seconds": 10}));
+    assert!(!err);
+    let (err, _) = client.call("delete_action", json!({"app_id": id, "action_id": "run"}));
+    assert!(!err);
+    let (err, composite) = client.call("set_action", json!({"app_id": id, "kind": "buildRun"}));
+    assert!(!err, "{composite}");
+    let (err, missing) = client.call(
+        "run_action",
+        json!({"app_id": id, "action_id": "build-run"}),
+    );
+    assert!(
+        err && missing.as_str().unwrap().contains("no run action"),
+        "{missing}"
+    );
+    let (err, folder) = client.call("set_action", json!({"app_id": id, "action_id": "open-dist", "name": "Open dist folder", "icon": "folder_open", "script": "Write-Output 'folder'"}));
+    assert!(!err, "{folder}");
+    assert_eq!(folder["action"]["icon"], "folder_open");
+    let (err, completed) = client.call(
+        "run_action",
+        json!({"app_id": id, "action_id": "build", "wait": true}),
+    );
+    assert!(!err, "{completed}");
+    assert_eq!(completed["exit_code"], 0);
+    let (err, app) = client.call("get_app", json!({"app_id": id}));
+    assert!(!err, "{app}");
+    assert!(app["scripts"].get("run").is_none());
 }
 
 #[test]

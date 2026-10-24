@@ -7,14 +7,41 @@ use slint::ComponentHandle;
 use super::editor::{parse_retention, retention_controls, when_running_index, when_running_of};
 use super::{Controller, convert};
 use crate::SettingsBridge;
-use crate::data::{DataLocation, IconSize, McpAccess, Settings, Store, ThemePref};
+use crate::data::{
+    ConsoleThemePref, DataLocation, IconSize, McpAccess, Settings, Store, ThemePref,
+};
 use crate::platform::{self, autostart};
 
 impl Controller {
+    /// Applies the console palette to every window without rebuilding output or selection.
+    pub(super) fn apply_console_theme(&self) {
+        let mode = match self.settings.read().unwrap().console_theme {
+            ConsoleThemePref::Follow => 0,
+            ConsoleThemePref::Light => 1,
+            ConsoleThemePref::Dark => 2,
+        };
+        let ui = self.ui();
+        ui.global::<crate::Theme>().set_console_mode(mode);
+        self.modes
+            .compact
+            .global::<crate::Theme>()
+            .set_console_mode(mode);
+        self.modes
+            .icon
+            .global::<crate::Theme>()
+            .set_console_mode(mode);
+        self.modes
+            .popup
+            .global::<crate::Theme>()
+            .set_console_mode(mode);
+        ui.global::<SettingsBridge>().set_console_theme_index(mode);
+    }
+
     pub(super) fn open_settings(&self) {
         let s = self.settings.read().unwrap().clone();
         let ui = self.ui();
         let g = ui.global::<SettingsBridge>();
+        self.apply_console_theme();
         g.set_theme_index(match s.theme {
             ThemePref::System => 0,
             ThemePref::Light => 1,
@@ -28,6 +55,8 @@ impl Controller {
         });
         g.set_top_compact(s.always_on_top_compact);
         g.set_top_icon(s.always_on_top_icon);
+        g.set_taskbar_full(s.taskbar_full);
+        g.set_taskbar_compact(s.taskbar_compact);
         g.set_line_limit(s.output_line_limit.to_string().into());
         g.set_when_running_index(when_running_index(s.default_when_running));
         let r = &s.default_retention;
@@ -104,6 +133,11 @@ impl Controller {
             2 => ThemePref::Dark,
             _ => ThemePref::System,
         };
+        s.console_theme = match g.get_console_theme_index() {
+            1 => ConsoleThemePref::Light,
+            2 => ConsoleThemePref::Dark,
+            _ => ConsoleThemePref::Follow,
+        };
         s.autostart = g.get_autostart();
         s.icon_size = match g.get_icon_size_index() {
             0 => IconSize::Small,
@@ -112,6 +146,8 @@ impl Controller {
         };
         s.always_on_top_compact = g.get_top_compact();
         s.always_on_top_icon = g.get_top_icon();
+        s.taskbar_full = g.get_taskbar_full();
+        s.taskbar_compact = g.get_taskbar_compact();
         if let Ok(limit) = g.get_line_limit().trim().parse::<u32>()
             && limit >= 100
         {
@@ -157,6 +193,8 @@ impl Controller {
         self.manager.set_line_limit(new.output_line_limit);
         if new.theme != old.theme {
             self.apply_theme();
+        } else if new.console_theme != old.console_theme {
+            self.apply_console_theme();
         }
         self.apply_mode_settings();
         self.refresh_tray();
@@ -176,6 +214,24 @@ impl Controller {
 
     pub(super) fn bind_settings(self: &Rc<Self>) {
         let ui = self.ui();
+        for bridge in [
+            ui.global::<crate::OutputBridge>(),
+            self.modes.compact.global::<crate::OutputBridge>(),
+            self.modes.popup.global::<crate::OutputBridge>(),
+        ] {
+            let weak = Rc::downgrade(self);
+            bridge.on_cycle_console_theme(move || {
+                if let Some(c) = weak.upgrade() {
+                    let mut settings = c.settings.read().unwrap().clone();
+                    settings.console_theme = match settings.console_theme {
+                        ConsoleThemePref::Follow => ConsoleThemePref::Light,
+                        ConsoleThemePref::Light => ConsoleThemePref::Dark,
+                        ConsoleThemePref::Dark => ConsoleThemePref::Follow,
+                    };
+                    c.apply_settings(settings);
+                }
+            });
+        }
         let g = ui.global::<SettingsBridge>();
         let weak = Rc::downgrade(self);
         g.on_changed(move || {
@@ -214,6 +270,12 @@ impl Controller {
         g.on_check_updates(move || {
             if let Some(c) = weak.upgrade() {
                 c.check_updates(true);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        g.on_copy_mcp_setup(move || {
+            if let Some(c) = weak.upgrade() {
+                c.copy_mcp_setup();
             }
         });
     }

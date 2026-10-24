@@ -82,7 +82,19 @@ The environment of every script includes `RUNBAY_APP_ID`, `RUNBAY_ACTION_ID`,
 ## Use from coding agents (MCP)
 
 RunBay is an MCP server over stdio. Point your agent at the executable with the
-`--mcp` argument, for example in an MCP configuration:
+`--mcp` argument.
+
+For a ready-to-paste setup guide, use **Copy MCP setup instructions** in
+**Settings → Agents**, **Copy MCP setup** in Compact, or the same entry in the
+Icon app popup or right-click menu. Paste the copied text into Claude Desktop
+or Codex; it includes this installation's executable path and any `--data-dir` arguments,
+with JSON and TOML examples and a PowerShell command. On another computer,
+adapt the paths to its RunBay installation. Follow the
+[Claude Desktop setup guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
+or [Codex MCP documentation](https://developers.openai.com/codex/mcp) for client
+configuration details.
+
+For example, a Claude Desktop MCP configuration:
 
 ```json
 {

@@ -5,7 +5,8 @@ import { Palette } from "std-widgets.slint";
 
 export global Theme {
     // Follows the color scheme of the Material style (Windows theme or the user override).
-    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    property <color> native-background: Palette.background;
+    out property <bool> dark: native-background.red < 128;
 
     // Color roles (M3 baseline, tuned for RunBay).
     out property <color> primary: dark ? #d0bcff : #6750a4;
@@ -40,10 +41,12 @@ export global Theme {
     out property <color> inverse-primary: dark ? #6750a4 : #d0bcff;
 
     // Console.
-    out property <color> console-background: dark ? #0f0d13 : #fbf8fd;
-    out property <color> console-text: dark ? #e6e0e9 : #1d1b20;
-    out property <color> console-error: dark ? #ffb4ab : #b3261e;
-    out property <color> console-selection: dark ? #3b354c : #dcd3ed;
+    in-out property <int> console-mode;
+    out property <bool> console-dark: console-mode == 2 || (console-mode == 0 && dark);
+    out property <color> console-background: console-dark ? #0f0d13 : #fbf8fd;
+    out property <color> console-text: console-dark ? #e6e0e9 : #1d1b20;
+    out property <color> console-error: console-dark ? #ffb4ab : #b3261e;
+    out property <color> console-selection: console-dark ? #3b354c : #dcd3ed;
     out property <string> mono-font: "Cascadia Mono";
     out property <length> mono-size: 13px;
 
@@ -71,6 +74,25 @@ export global Theme {
 
 // Material Symbols Rounded (Apache-2.0); outlined for idle states, *-fill for active ones.
 export global Icons {
+    out property <image> light-mode: @image-url("icons/light_mode.svg");
+    out property <image> dark-mode: @image-url("icons/dark_mode.svg");
+    out property <image> system-theme: @image-url("icons/brightness_auto.svg");
+    public pure function default-action-icon(kind: string) -> image {
+        return kind == "build" ? Icons.build : kind == "run" ? Icons.play
+            : kind == "buildrun" ? Icons.rocket : Icons.terminal;
+    }
+    public pure function action-icon(name: string) -> image {
+        return name == "build" ? Icons.build
+            : name == "play_arrow" ? Icons.play
+            : name == "rocket_launch" ? Icons.rocket
+            : name == "refresh" ? Icons.refresh
+            : name == "folder" ? Icons.folder
+            : name == "folder_open" ? Icons.folder-open
+            : name == "description" ? Icons.description
+            : name == "settings" ? Icons.settings
+            : name == "desktop_windows" ? Icons.full
+            : name == "bubble_chart" ? Icons.bubble : Icons.terminal;
+    }
     out property <image> build: @image-url("icons/build.svg");
     out property <image> build-fill: @image-url("icons/build_fill1.svg");
     out property <image> play: @image-url("icons/play_arrow.svg");

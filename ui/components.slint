@@ -2,10 +2,11 @@
 
 import { Theme, Icons } from "theme.slint";
 import { ListView } from "std-widgets.slint";
-import { OutputRow } from "types.slint";
+import { OutputRow, ActionButton } from "types.slint";
 
 // One protocol for the Full output and the Compact/Icon output popups.
 export global OutputBridge {
+    callback cycle-console-theme();
     callback selection-event(bool, string, int, int, bool);
     in-out property <bool> full-selected;
     in-out property <bool> popup-selected;
@@ -99,7 +100,8 @@ export component OutputView inherits Rectangle {
                 padding-right: root.side-padding;
                 for span in row.spans: Text {
                     text: span.text;
-                    color: span.colored ? span.color : row.stderr ? Theme.console-error : Theme.console-text;
+                    color: span.colored ? (Theme.console-dark ? span.dark-color : span.color)
+                        : row.stderr ? Theme.console-error : Theme.console-text;
                     font-family: Theme.mono-font;
                     font-size: root.font-size;
                     font-weight: span.bold ? 700 : 400;
@@ -217,6 +219,10 @@ export component StatusBadge inherits Rectangle {
     in property <length> size: 18px;
     in property <bool> agent;
     in property <bool> busy;
+    in property <string> tooltip: status == "running" ? (busy ? "Working" : "Application running")
+        : status == "success" ? "Succeeded (exit code 0)"
+        : status == "failed" ? "Failed (nonzero exit code)"
+        : status == "stopped" ? "Stopped" : status;
     in property <brush> busy-color: agent ? Theme.tertiary : Theme.primary;
     in property <brush> lamp-color: agent ? Theme.tertiary : Theme.success;
     in property <color> lamp-outline: Theme.surface;
@@ -225,7 +231,11 @@ export component StatusBadge inherits Rectangle {
     visible: status != "";
 
     accessible-role: text;
-    accessible-label: status == "running" ? (busy ? "Working" : "Application running") : status;
+    accessible-label: tooltip;
+
+    if status != "" && tooltip != "": Tooltip {
+        TooltipContent { text: root.tooltip; }
+    }
 
     if status == "running" && !busy: Rectangle {
         width: size * 0.6;
@@ -275,7 +285,9 @@ export component SymbolButton inherits Rectangle {
     callback clicked();
 
     property <bool> pressed: touch.pressed || pulse;
-    min-width: label == "" ? size : size + label-text.preferred-width + 20px;
+    width: label == "" ? size : size + label-text.preferred-width + 20px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
     height: size;
     border-radius: pressed ? Theme.corner-small : self.height / 2;
     background: !enabled ? transparent
@@ -298,9 +310,9 @@ export component SymbolButton inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: label == "" ? (size - icon-size) / 2 : 10px;
-        padding-right: label == "" ? (size - icon-size) / 2 : 12px;
-        spacing: 6px;
+        padding-left: label == "" ? 0px : 10px;
+        padding-right: label == "" ? 0px : 12px;
+        spacing: label == "" ? 0px : 6px;
         alignment: center;
         if root.status != "running": Image {
             source: icon;
@@ -310,6 +322,7 @@ export component SymbolButton inherits Rectangle {
             y: (parent.height - self.height) / 2;
         }
         if root.status == "running": StatusBadge {
+            tooltip: "";
             status: root.status;
             busy: root.busy;
             agent: root.agent;
@@ -320,14 +333,21 @@ export component SymbolButton inherits Rectangle {
             size: root.icon-size;
             y: (parent.height - self.height) / 2;
         }
-        label-text := Text {
-            visible: label != "";
-            text: label;
-            color: icon-color;
+        if label != "": Text {
+            text: root.label;
+            color: root.icon-color;
             font-size: Theme.label-large;
             font-weight: 500;
             vertical-alignment: center;
         }
+    }
+
+    // Measure labeled buttons without leaving an empty layout item in icon buttons.
+    label-text := Text {
+        visible: false;
+        text: root.label;
+        font-size: Theme.label-large;
+        font-weight: 500;
     }
 
     if agent: Rectangle {
@@ -341,6 +361,8 @@ export component SymbolButton inherits Rectangle {
             source: Icons.agent;
             width: 12px;
             height: 12px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
             colorize: Theme.on-tertiary-container;
         }
     }
@@ -351,7 +373,7 @@ export component SymbolButton inherits Rectangle {
         clicked => { root.clicked(); }
     }
 
-    if tooltip != "" && enabled: Tooltip {
+    if tooltip != "": Tooltip {
         TooltipContent {
             text: root.tooltip;
         }
@@ -406,6 +428,17 @@ export component Avatar inherits Rectangle {
         font-size: size * 0.5;
         font-weight: 600;
     }
+}
+
+// Console-only theme shortcut, shared by Full and Compact/Icon output headers.
+export component ConsoleThemeButton inherits SymbolButton {
+    icon: Theme.console-mode == 1 ? Icons.light-mode
+        : Theme.console-mode == 2 ? Icons.dark-mode : Icons.system-theme;
+    tooltip: Theme.console-mode == 1 ? "Console theme: Light. Click for Dark."
+        : Theme.console-mode == 2 ? "Console theme: Dark. Click for Follow UI."
+        : "Console theme: Follow UI. Click for Light.";
+    size: 32px;
+    clicked => { OutputBridge.cycle-console-theme(); }
 }
 
 // A modal scrim with a centered dialog surface; content goes inside.
@@ -481,5 +514,96 @@ export component PillButton inherits Rectangle {
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
+    }
+}
+
+// Every action gets a direct icon until the available row width is exhausted.
+export component ActionBar inherits Rectangle {
+    in property <[ActionButton]> actions;
+    in property <length> size: 32px;
+    in property <string> style: "tonal";
+    callback triggered(string);
+    min-width: 0px;
+    preferred-width: 0px;
+    horizontal-stretch: 1;
+    height: actions.length == 0 ? 0px : size;
+    property <length> gap: 4px;
+    property <int> slots: max(1, floor((self.width + gap) / (size + gap)));
+    property <int> direct-count: actions.length <= slots ? actions.length : max(0, slots - 1);
+
+    for action[index] in actions: SymbolButton {
+        visible: index < root.direct-count;
+        x: index * (root.size + root.gap);
+        icon: Icons.action-icon(action.icon-name);
+        tooltip: action.name;
+        size: root.size;
+        icon-size: 18px;
+        enabled: action.enabled;
+        style: action.status == "running" ? (action.agent ? "tertiary" : "filled") : root.style;
+        agent: action.agent;
+        status: action.status;
+        busy: action.busy;
+        pulse: action.agent && action.status == "running";
+        clicked => { root.triggered(action.id); }
+    }
+    if root.direct-count < actions.length: SymbolButton {
+        x: root.direct-count * (root.size + root.gap);
+        icon: Icons.more-vert;
+        tooltip: "More actions";
+        size: root.size;
+        icon-size: 18px;
+        style: root.style;
+        clicked => { overflow-menu.show(); }
+    }
+    overflow-menu := PopupWindow {
+        x: max(0px, root.direct-count * (root.size + root.gap) - 180px);
+        y: root.height;
+        width: 220px;
+        Rectangle {
+            background: Theme.surface-container-high;
+            border-radius: Theme.corner-small;
+            VerticalLayout {
+                padding: 6px;
+                spacing: 0px;
+                for action[index] in root.actions: Rectangle {
+                    visible: index >= root.direct-count;
+                    height: index >= root.direct-count ? 36px : 0px;
+                    opacity: action.enabled ? 1 : 0.38;
+                    border-radius: 6px;
+                    background: item-touch.has-hover ? Theme.surface-container-highest : transparent;
+                    accessible-role: button;
+                    accessible-label: action.name;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 8px;
+                        Image {
+                            source: Icons.action-icon(action.icon-name);
+                            width: 18px;
+                            height: 18px;
+                            y: (parent.height - self.height) / 2;
+                            colorize: Theme.on-surface-variant;
+                        }
+                        Text {
+                            text: action.name;
+                            color: Theme.on-surface;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        if action.status == "running": StatusBadge {
+                            status: action.status;
+                            busy: action.busy;
+                            agent: action.agent;
+                        }
+                    }
+                    item-touch := TouchArea {
+                        enabled: action.enabled;
+                        mouse-cursor: pointer;
+                        clicked => { overflow-menu.close(); root.triggered(action.id); }
+                    }
+                }
+            }
+        }
     }
 }

@@ -72,6 +72,21 @@ impl Retention {
     }
 }
 
+/// Material Symbols available for action buttons, with their editor labels.
+pub const ACTION_ICONS: &[(&str, &str)] = &[
+    ("build", "Build"),
+    ("play_arrow", "Play"),
+    ("rocket_launch", "Rocket"),
+    ("terminal", "Terminal"),
+    ("refresh", "Refresh"),
+    ("folder", "Folder"),
+    ("folder_open", "Open folder"),
+    ("description", "Document"),
+    ("settings", "Settings"),
+    ("desktop_windows", "Desktop"),
+    ("bubble_chart", "Bubbles"),
+];
+
 /// One action of an app, stored inside `app.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,6 +97,9 @@ pub struct ActionDef {
     pub name: String,
     /// Role of the action.
     pub kind: ActionKind,
+    /// Material Symbol name, or `None` to use the action kind's default icon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     /// Script path relative to the app folder (`actions/<id>.ps1`); `None` for
     /// `buildRun` and for build/run actions without a script.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -125,24 +143,48 @@ pub struct AppDef {
     /// Environment variables added to every action.
     #[serde(default)]
     pub env: BTreeMap<String, String>,
-    /// Exactly one build, run, and buildRun action plus custom actions.
+    /// At most one build, run, and buildRun action plus custom actions.
     pub actions: Vec<ActionDef>,
+}
+
+impl ActionDef {
+    /// Creates an action with the standard name, id, and user-configured defaults
+    /// for its role. Apps resolve any id collision before inserting it.
+    pub fn new(kind: ActionKind, settings: &Settings) -> Self {
+        let (id, name) = match kind {
+            ActionKind::Build => ("build", "Build"),
+            ActionKind::Run => ("run", "Run"),
+            ActionKind::BuildRun => ("build-run", "Build + Run"),
+            ActionKind::Custom => ("custom", "New action"),
+        };
+        Self {
+            id: id.into(),
+            name: name.into(),
+            kind,
+            icon: None,
+            script: None,
+            working_directory: None,
+            env: BTreeMap::new(),
+            when_running: settings.default_when_running,
+            retention: settings.default_retention(kind),
+        }
+    }
+
+    /// The action's chosen Material Symbol, falling back to its role's default.
+    pub fn icon_name(&self) -> &str {
+        self.icon.as_deref().unwrap_or(match self.kind {
+            ActionKind::Build => "build",
+            ActionKind::Run => "play_arrow",
+            ActionKind::BuildRun => "rocket_launch",
+            ActionKind::Custom => "terminal",
+        })
+    }
 }
 
 impl AppDef {
     /// Creates an app with the three standard actions (without scripts) using `settings`
     /// defaults for retention and `whenRunning`.
     pub fn new(id: &str, name: &str, settings: &Settings) -> Self {
-        let action = |id: &str, name: &str, kind| ActionDef {
-            id: id.to_string(),
-            name: name.to_string(),
-            kind,
-            script: None,
-            working_directory: None,
-            env: BTreeMap::new(),
-            when_running: settings.default_when_running,
-            retention: settings.default_retention(kind),
-        };
         Self {
             id: id.to_string(),
             name: name.to_string(),
@@ -153,9 +195,9 @@ impl AppDef {
             shell: Shell::Auto,
             env: BTreeMap::new(),
             actions: vec![
-                action("build", "Build", ActionKind::Build),
-                action("run", "Run", ActionKind::Run),
-                action("build-run", "Build + Run", ActionKind::BuildRun),
+                ActionDef::new(ActionKind::Build, settings),
+                ActionDef::new(ActionKind::Run, settings),
+                ActionDef::new(ActionKind::BuildRun, settings),
             ],
         }
     }
@@ -175,7 +217,7 @@ impl AppDef {
         self.actions.iter().find(|a| a.kind == kind)
     }
 
-    /// Checks the structural rules of the specification (§4.1): exactly one build, run,
+    /// Checks the structural rules of the specification (§4.1): at most one build, run,
     /// and buildRun action, unique slug ids, and no script on buildRun.
     pub fn validate(&self) -> Result<(), String> {
         if !super::ids::is_slug(&self.id) {
@@ -186,12 +228,17 @@ impl AppDef {
         }
         for kind in [ActionKind::Build, ActionKind::Run, ActionKind::BuildRun] {
             let n = self.actions.iter().filter(|a| a.kind == kind).count();
-            if n != 1 {
-                return Err(format!("expected exactly one {kind:?} action, found {n}"));
+            if n > 1 {
+                return Err(format!("expected at most one {kind:?} action, found {n}"));
             }
         }
         let mut seen = std::collections::HashSet::new();
         for action in &self.actions {
+            if let Some(icon) = &action.icon
+                && !ACTION_ICONS.iter().any(|(name, _)| name == icon)
+            {
+                return Err(format!("unknown action icon \"{icon}\""));
+            }
             if !super::ids::is_slug(&action.id) {
                 return Err(format!("invalid action id \"{}\"", action.id));
             }
@@ -229,6 +276,19 @@ pub enum ThemePref {
     /// Follow the Windows app theme.
     #[default]
     System,
+    /// Always light.
+    Light,
+    /// Always dark.
+    Dark,
+}
+
+/// Console theme, independent of the application's theme preference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ConsoleThemePref {
+    /// Follow the theme selected for the application UI.
+    #[default]
+    Follow,
     /// Always light.
     Light,
     /// Always dark.
@@ -321,6 +381,8 @@ impl DataLocation {
 pub struct Settings {
     /// Theme preference.
     pub theme: ThemePref,
+    /// Theme used by every console output view.
+    pub console_theme: ConsoleThemePref,
     /// Load with Windows.
     pub autostart: bool,
     /// Floating icon size.
@@ -329,6 +391,10 @@ pub struct Settings {
     pub always_on_top_compact: bool,
     /// Always on top in Icon mode.
     pub always_on_top_icon: bool,
+    /// Taskbar button for the Full window; the tray icon stays available when hidden.
+    pub taskbar_full: bool,
+    /// Taskbar button for the Compact window.
+    pub taskbar_compact: bool,
     /// On-screen output line limit per run.
     pub output_line_limit: u32,
     /// Retention for new actions.
@@ -345,10 +411,13 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: ThemePref::System,
+            console_theme: ConsoleThemePref::Follow,
             autostart: false,
             icon_size: IconSize::Medium,
             always_on_top_compact: false,
             always_on_top_icon: true,
+            taskbar_full: true,
+            taskbar_compact: true,
             output_line_limit: 10_000,
             default_retention: DefaultRetention::default(),
             default_when_running: WhenRunning::Ask,
@@ -459,6 +528,28 @@ mod tests {
     }
 
     #[test]
+    fn action_icons_preserve_defaults_and_round_trip_choices() {
+        let mut app = AppDef::new("a", "A", &Settings::default());
+        assert_eq!(app.actions[0].icon_name(), "build");
+        assert_eq!(app.actions[1].icon_name(), "play_arrow");
+        assert_eq!(app.actions[2].icon_name(), "rocket_launch");
+        for (icon, _) in ACTION_ICONS {
+            app.actions[0].icon = Some(icon.to_string());
+            app.validate().unwrap();
+            let json = serde_json::to_string(&app).unwrap();
+            let restored: AppDef = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored.actions[0].icon_name(), *icon);
+            assert_eq!(restored.actions[1].icon_name(), "play_arrow");
+            assert!(restored.icon.is_none());
+        }
+        app.actions[0].icon = Some("unknown_symbol".into());
+        assert!(app.validate().is_err());
+        app.actions[0].icon = None;
+        app.validate().unwrap();
+        assert_eq!(app.actions[0].icon_name(), "build");
+    }
+
+    #[test]
     fn validation_rejects_duplicates() {
         let mut app = AppDef::new("a", "A", &Settings::default());
         let mut extra = app.actions[0].clone();
@@ -468,10 +559,46 @@ mod tests {
     }
 
     #[test]
+    fn standard_actions_are_optional_but_roles_remain_unique() {
+        let mut app = AppDef::new("a", "A", &Settings::default());
+        app.actions.retain(|a| a.kind == ActionKind::Build);
+        app.validate().unwrap();
+        let restored: AppDef = serde_json::from_str(&serde_json::to_string(&app).unwrap()).unwrap();
+        assert_eq!(restored.actions.len(), 1);
+        app.actions.clear();
+        app.validate().unwrap();
+        app.actions
+            .push(ActionDef::new(ActionKind::Run, &Settings::default()));
+        let mut duplicate = app.actions[0].clone();
+        duplicate.id = "another-run".into();
+        app.actions.push(duplicate);
+        assert!(app.validate().unwrap_err().contains("at most one"));
+    }
+
+    #[test]
     fn settings_fill_missing_fields() {
         let s: Settings = serde_json::from_str(r#"{"theme":"dark"}"#).unwrap();
         assert_eq!(s.theme, ThemePref::Dark);
+        assert_eq!(s.console_theme, ConsoleThemePref::Follow);
         assert_eq!(s.output_line_limit, 10_000);
         assert_eq!(s.mcp_access, McpAccess::AskFirst);
+    }
+
+    #[test]
+    fn console_theme_round_trips_independently_of_ui_theme() {
+        for console_theme in [
+            ConsoleThemePref::Follow,
+            ConsoleThemePref::Light,
+            ConsoleThemePref::Dark,
+        ] {
+            let settings = Settings {
+                theme: ThemePref::Light,
+                console_theme,
+                ..Settings::default()
+            };
+            let json = serde_json::to_string(&settings).unwrap();
+            let restored: Settings = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored, settings);
+        }
     }
 }

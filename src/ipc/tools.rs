@@ -215,6 +215,7 @@ fn list_apps(host: &Host) -> Result<Value> {
                     "id": a.id,
                     "name": a.name,
                     "kind": a.kind,
+                    "icon": a.icon,
                     "has_script": a.script.is_some(),
                 })).collect::<Vec<_>>(),
             }),
@@ -646,15 +647,36 @@ fn set_action(host: &Host, agent: &str, args: &Value) -> Result<Value> {
     let settings = host.settings.read().unwrap().clone();
 
     let requested = opt_str(args, "action_id").map(str::to_string);
+    let requested_kind = parse::<ActionKind>(args, "kind")?;
     let exists = requested
         .as_deref()
         .is_some_and(|id| app.action(id).is_some());
     let action_id = if exists {
+        if requested_kind
+            .is_some_and(|kind| app.action(requested.as_deref().unwrap()).unwrap().kind != kind)
+        {
+            bail!("an existing action's kind cannot be changed");
+        }
         requested.unwrap()
     } else {
+        let kind = requested_kind.unwrap_or(match requested.as_deref() {
+            Some("build") => ActionKind::Build,
+            Some("run") => ActionKind::Run,
+            Some("build-run") => ActionKind::BuildRun,
+            _ => ActionKind::Custom,
+        });
+        if kind != ActionKind::Custom && app.action_of(kind).is_some() {
+            bail!("the app already has a {kind:?} action");
+        }
+        let default = ActionDef::new(kind, &settings);
         let name = opt_str(args, "name")
             .or(requested.as_deref())
-            .context("a new action needs a name or an action_id")?
+            .or(if kind == ActionKind::Custom {
+                None
+            } else {
+                Some(default.name.as_str())
+            })
+            .context("a new custom action needs a name or an action_id")?
             .to_string();
         let id = match requested {
             Some(id) if ids::is_slug(&id) => id,
@@ -666,18 +688,28 @@ fn set_action(host: &Host, agent: &str, args: &Value) -> Result<Value> {
         app.actions.push(ActionDef {
             id: id.clone(),
             name,
-            kind: ActionKind::Custom,
+            kind,
+            icon: None,
             script: None,
             working_directory: None,
             env: BTreeMap::new(),
             when_running: settings.default_when_running,
-            retention: settings.default_retention(ActionKind::Custom),
+            retention: settings.default_retention(kind),
         });
         id
     };
     let mut changed = Vec::new();
     {
         let action = app.action_mut(&action_id).expect("the action exists");
+        if let Some(icon) = args.get("icon") {
+            action.icon = match icon {
+                Value::Null => None,
+                Value::String(name) if name.is_empty() => None,
+                Value::String(name) => Some(name.clone()),
+                _ => bail!("icon must be a Material Symbol name or null"),
+            };
+            changed.push("icon");
+        }
         if let Some(name) = opt_str(args, "name") {
             if name.trim().is_empty() {
                 bail!("the action name is empty");
@@ -706,6 +738,7 @@ fn set_action(host: &Host, agent: &str, args: &Value) -> Result<Value> {
             changed.push("retention");
         }
     }
+    app.validate().map_err(anyhow::Error::msg)?;
     if let Some(script) = opt_str(args, "script") {
         host.store.write_script(&mut app, &action_id, script)?;
         changed.push("script");
@@ -740,8 +773,13 @@ fn delete_action(host: &Host, agent: &str, args: &Value) -> Result<Value> {
         .action(action_id)
         .with_context(|| format!("{} has no action \"{action_id}\"", app.name))?
         .clone();
-    if action.kind != ActionKind::Custom {
-        bail!("only custom actions can be removed");
+    if host.manager.active_for_app(app_id).iter().any(|run| {
+        let info = run.info();
+        info.action_id == action_id
+            || (info.kind == ActionKind::BuildRun
+                && matches!(action.kind, ActionKind::Build | ActionKind::Run))
+    }) {
+        bail!("stop the action before removing it");
     }
     let before = host.snapshot(app_id)?;
     if action.script.is_some() {
@@ -769,6 +807,9 @@ fn update_settings(host: &Host, agent: &str, args: &Value) -> Result<Value> {
     if let Some(v) = parse::<ThemePref>(args, "theme")? {
         s.theme = v;
     }
+    if let Some(v) = parse::<crate::data::ConsoleThemePref>(args, "console_theme")? {
+        s.console_theme = v;
+    }
     if let Some(v) = opt_bool(args, "autostart") {
         s.autostart = v;
     }
@@ -780,6 +821,12 @@ fn update_settings(host: &Host, agent: &str, args: &Value) -> Result<Value> {
     }
     if let Some(v) = opt_bool(args, "always_on_top_icon") {
         s.always_on_top_icon = v;
+    }
+    if let Some(v) = opt_bool(args, "taskbar_full") {
+        s.taskbar_full = v;
+    }
+    if let Some(v) = opt_bool(args, "taskbar_compact") {
+        s.taskbar_compact = v;
     }
     if let Some(v) = opt_u64(args, "output_line_limit") {
         if v < 100 {

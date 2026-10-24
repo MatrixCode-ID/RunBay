@@ -116,6 +116,7 @@ pointer, which always stays in the default folder next to the executable.
       "id": "build",
       "name": "Build",
       "kind": "build",
+      "icon": "build",
       "script": "actions/build.ps1",
       "workingDirectory": null,
       "env": {},
@@ -145,13 +146,21 @@ pointer, which always stays in the default folder next to the executable.
 | --- | --- |
 | `shell` | `auto` (pwsh → powershell), `pwsh`, `powershell` |
 | `kind` | `build`, `run`, `buildRun`, `custom` |
+| `icon` on an action | Optional Material Symbol: `build`, `play_arrow`, `rocket_launch`, `terminal`, `refresh`, `folder`, `folder_open`, `description`, `settings`, `desktop_windows`, `bubble_chart`. Missing/null uses the action kind's default. Independent of the app image. |
 | `whenRunning` | `ask`, `reject`, `restart`, `parallel` |
 | `retention.mode` | `off`, `last` (with `count`), `forever` |
 | `workingDirectory` / `env` on an action | `null`/empty = inherit from the app; action env overrides app keys with the same name |
 
-- Every app has exactly one `build`, `run`, and `buildRun` action, plus zero or
-  more `custom` actions. The `buildRun` action has no script of its own: it runs
-  the `build` script, then `run` if the build succeeded.
+- New apps start with `build`, `run`, and `buildRun`. Each standard role is
+  optional, with at most one of each plus any number of custom actions; an app
+  may have no actions. Any action can be removed in the editor or through MCP.
+  The editor's Add action menu offers missing standard roles plus Custom action;
+  restored roles use their default names/icons and current default rules and
+  retention, with no script. Existing standard roles are not offered again.
+- The `buildRun` action has no script of its own: it runs `build`, then `run`
+  if the build succeeded. It is disabled when either dependency or script is
+  missing; an MCP attempt reports the missing dependency. Active actions and
+  dependencies of an active Build + Run must be stopped before removal.
 - `build`/`run` may be left without a script; their buttons are then disabled.
 
 ### 4.2 `history/index.jsonl`
@@ -261,6 +270,15 @@ Different apps may always run in parallel.
   monospace character width for hit testing and horizontal scrolling. CJK and
   emoji are treated as one column; wide-character handling is a known limitation.
 - Output panel actions: Stop, Copy all, Open log file, Clear view.
+- A console theme icon button cycles **Follow UI → Light → Dark → Follow UI**
+  independently of the application theme, with Auto, Sun, and Moon icons and a
+  tooltip naming the current mode and next choice. The saved preference is
+  shared by the Full panel and Compact/Icon output popups and is available even
+  before a run is selected. Follow UI (the default) follows the theme selected
+  for the application, including Windows changes when the UI uses System.
+  Background, default text, stderr, selection, and basic ANSI colors update
+  immediately for existing and new output, preserving selection and scrolling.
+  Extended palette entries (16–255) and RGB colors retain their original values.
 
 ### 5.4 Status badges
 
@@ -276,6 +294,11 @@ actions retain their tertiary accent and agent markers. When several runs are
 active, each action keeps its own indicator; an app's overall badge shows the
 spinner while any Build/Custom step is active, then the lamp while only Run steps
 remain. Finished runs keep their success, failed, or stopped icons.
+
+Badges have tooltips and accessible labels explaining the state: Succeeded,
+Failed, Stopped, Working, or Application running. The app badge identifies the
+action and time of its last result, or the representative active action and the
+number of active runs. The gray X means Stopped; the green check means Succeeded.
 
 The floating icon uses the same aggregate distinction (active > failed > success,
 with busy work taking precedence over Run lamps). The tray uses static badges:
@@ -309,10 +332,20 @@ A regular, resizable window.
   up* / *Move down* in the app menu and moved between groups by choosing the
   group in the editor; drag and drop is a later idea
   ([drag-reorder](ideas/drag-reorder.md)). Each app shows its icon, name, badge, Build / Run / Build+Run
-  buttons, and a custom action menu. Below the app, its active/last runs are
+  buttons for all configured actions. Below the app, its active/last runs are
   listed; selecting one shows its output in the Output panel.
 - **Output**: output of the selected run (live while running). Multiple active
   runs are shown as tabs.
+- Action controls use consistently sized, centered icon-only buttons with action
+  name tooltips (32 px square in Full, 30 px in Compact/Icon). More is a 32 px
+  circular icon button; it never stretches to fill the card header.
+- Standard and custom actions share the same direct icon bar, in configured
+  order. Deleted actions leave no placeholder buttons. When the available width
+  cannot fit every action, reserve a three-dot More button and put only the
+  actions that do not fit in that menu. Resizing recalculates the visible set.
+  Action icons, enabled state, running state, and agent markers are preserved.
+- While an app has active actions, its card shows a Stop icon that stops all of
+  that app's active process trees, including parallel actions.
 - **Action History** (right flyout, opened with the *Action History* button):
   runs from every app's `history/index.jsonl`, newest first, filterable by
   app/action/status. Selecting an entry opens its log in the Output panel.
@@ -327,13 +360,17 @@ A regular, resizable window.
 
 A small resizable window (default about 320×420).
 
-- List of apps (icon, name, badge) with Build / Run / Build+Run action icons
-  and a custom action menu.
+- List of apps (icon, name, badge) with direct icons for all configured actions,
+  including custom actions. The same width-based overflow menu as Full is used.
+- A Stop icon appears directly in each app row while it has active actions,
+  stopping all active runs of that app without opening its output popup.
 - **Message icon per app**: opens a popup with the output of that app's last
   run, live while running, with Stop and Open in Full buttons. Its output uses
   the same selection, copying, and follow-mode controls as Full (§5.3), with the
   configured on-screen line limit.
 - Buttons: always on top (pin), switch mode.
+- **Copy MCP setup** copies the Claude Desktop/Codex setup instructions (§15.1)
+  directly from the Compact window.
 - **Version**: the RunBay version is shown in a small footer of the window,
   with the *Update ready* badge next to it when an update is ready; clicking it
   opens About.
@@ -352,7 +389,8 @@ A small resizable window (default about 320×420).
   and that window do not appear in the taskbar.
 - The aggregated badge is shown in a corner of the icon.
 - The message icon opens the same selectable output popup as Compact (§5.3).
-- Right-click: switch mode, always on top, icon size, exit.
+- Right-click: switch mode, always on top, icon size, Copy MCP setup instructions
+  (§15.1), exit.
 
 ### 6.4 Always on top
 
@@ -366,8 +404,11 @@ App editor dialog (from Full; Compact/Icon open Full for this):
 - Name, group, icon (pick a png/ico/svg file → copied to
   `data/apps/<app-id>/icon.<ext>`, replacing the previous icon), working
   directory (folder picker), shell, environment variables (key/value table).
-- Action list: name, script, working directory/env override, `whenRunning`,
-  retention. Custom actions can be added, reordered, and removed.
+- Action list: name, action icon (Material Symbols picker with preview and a
+  Default for action choice), script, working directory/env override, `whenRunning`,
+  retention. Any action can be removed; Add action offers missing Build, Run,
+  and Build + Run roles plus Custom action. Custom actions can be reordered.
+  An empty app shows an Add action explanation instead of action fields.
 - A simple script editor (monospace, no highlighting) with an **Open in external
   editor** button (Windows `.ps1` association). Scripts are saved to
   `actions/<action-id>.ps1`. *Open in external editor* writes the current script
@@ -380,18 +421,44 @@ App editor dialog (from Full; Compact/Icon open Full for this):
 
 ## 8. Settings
 
+Settings has a persistent Back button and category navigation: Appearance,
+Startup & data, Action defaults, Updates, and Agents. Each setting keeps its
+label, explanation, and controls together. The header explains that changes are
+saved automatically. Action defaults explicitly apply only to newly created
+actions; existing actions are edited in the app editor.
+
+The Full navigation header has a single theme button at the right of the RunBay
+title. Clicking cycles **System → Light → Dark → System**, saves the choice, and
+applies it across all windows. Its icon is Auto for System, Sun for Light, or
+Moon for Dark; the tooltip identifies the current mode and the next choice.
+System restores automatic Windows theme tracking, including after a manual
+override; it does not need periodic polling. The Settings theme selector stays
+in sync with this button.
+
 | Setting | Default |
 | --- | --- |
 | Theme | Follow Windows (Light / Dark / Follow Windows) |
+| Console theme | Follow UI (Light / Dark / Follow UI); saved as `consoleTheme` in `settings.json` |
 | Load with Windows | Off |
 | Floating icon size | Medium |
 | Always on top (Compact / Icon) | Off / On |
+| Taskbar icon (Full / Compact) | On / On; saved as `taskbarFull` / `taskbarCompact` |
 | On-screen output line limit | 10,000 |
 | Default retention for new actions | as in §2 |
 | Default `whenRunning` for new actions | Ask |
 | Auto update | On |
 | MCP access (Off / Ask first / Unrestricted) | Ask first |
 | Use another data folder | Off (`data/` next to the executable) |
+
+The taskbar icon switches in Appearance show or hide the taskbar button of the
+Full and Compact windows (the Icon mode window never has one). Changes apply
+immediately to a visible window without activating it. With the button hidden,
+the window is also left out of Alt+Tab and the tray icon opens RunBay. MCP
+`update_settings` accepts `taskbar_full` and `taskbar_compact`.
+
+The Appearance category's Console theme selector stays in sync with the console
+theme buttons. MCP `update_settings` accepts `console_theme` (`follow`, `light`,
+or `dark`); `get_settings` returns the saved `consoleTheme` preference.
 
 **Use another data folder** is a checkbox in the **Data** section. Enabling it
 opens a folder picker if no folder has been selected before; cancelling leaves
@@ -464,8 +531,9 @@ overload rendering.
 - UI icons (buttons, toolbars, menus, badges): **Material Symbols Rounded**
   (Google, Apache-2.0). Only the icons in use are added to the repository as SVG
   files, embedded at build time with `@image-url`, and tinted with theme tokens
-  through `colorize`; no icon font is bundled. The filled variant marks active
-  states (e.g. a running action), the outlined variant the idle state. The
+  through `colorize`; no icon font is bundled. Filled variants mark active
+  states where applicable; action buttons replace their selected idle symbol
+  with the spinner or Run lamp defined in §5.4. The
   Apache-2.0 license text ships in `THIRD-PARTY-NOTICES.md` and is listed in the
   About dialog.
 - Console output uses a monospace font (Cascadia Mono when available, falling
@@ -600,6 +668,17 @@ Protocol to manage apps, actions, and settings, and to build and run apps.
 
 ### 15.1 Connection: stdio bridge
 
+**Copy MCP setup instructions** is available in Full Settings > Agents, as a
+button in Compact and the Icon app popup, and in the Icon/badge right-click menu.
+It copies one English guide that can be pasted into Claude Desktop or Codex,
+with the current
+executable path, `--mcp`, and any explicit `--data-dir` launch arguments. The
+guide includes Claude Desktop JSON, a PowerShell `codex mcp add` command, Codex
+TOML configuration, reload steps, and a read-only `list_apps` connection check.
+It explains how to preserve existing configuration and adapt paths on another
+computer. Copying shows a confirmation snackbar or a clipboard error; it leaves
+client configuration and RunBay access settings for the user to apply.
+
 ```
 Agent (MCP client)
    │  stdio, JSON-RPC (MCP)
@@ -694,8 +773,8 @@ Edit apps (confirmation in *Ask first*):
 | `update_app` | Change app fields, order, or group |
 | `delete_app` | Remove an app and its history; **always** confirmed in the GUI, even when *Unrestricted* |
 | `set_app_icon` | Copy an image file (png/ico/svg) as the app icon |
-| `set_action` | Create or update an action, including its script, working directory, env, `whenRunning`, and retention |
-| `delete_action` | Remove a custom action |
+| `set_action` | Create or update an action, including its Material Symbol `icon` (null resets to default), script, working directory, env, `whenRunning`, and retention. `kind` can restore a missing `build`, `run`, or `buildRun` role; without `kind`, reserved new ids `build` / `run` / `build-run` restore that role, while other new ids create custom actions. Existing kinds cannot change, and duplicate standard roles are rejected. |
+| `delete_action` | Remove any action, including a standard role, once the action and any dependent Build + Run have stopped |
 
 Edit settings (confirmation in *Ask first*):
 

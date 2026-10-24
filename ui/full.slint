@@ -2,7 +2,7 @@
 
 import { ListView, LineEdit, TextEdit, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, TooltipContent, OutputView } from "components.slint";
+import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, TooltipContent, OutputView, ConsoleThemeButton } from "components.slint";
 import { Span, OutputRow, ActionButton, RunRow, AppRow } from "types.slint";
 import { EditorPage, SettingsPage, HistoryFlyout, AboutDialog } from "pages.slint";
 
@@ -53,6 +53,7 @@ component Menu inherits Rectangle {
 component AppCard inherits Rectangle {
     in property <AppRow> app;
     callback run-action(string, string);
+    callback stop-app(string);
     callback select-run(string);
     callback edit-app(string);
     callback remove-app(string);
@@ -75,6 +76,7 @@ component AppCard inherits Rectangle {
                 size: 32px;
             }
             VerticalLayout {
+                horizontal-stretch: 1;
                 alignment: center;
                 Text {
                     text: app.name;
@@ -89,6 +91,7 @@ component AppCard inherits Rectangle {
                 status: app.status;
                 busy: app.status-busy;
                 agent: app.status-agent;
+                tooltip: app.status-detail;
                 y: (parent.height - self.height) / 2;
             }
             menu-button := SymbolButton {
@@ -106,48 +109,20 @@ component AppCard inherits Rectangle {
         }
         if app.error == "": HorizontalLayout {
             spacing: 4px;
-            alignment: start;
-            SymbolButton {
-                icon: app.build.status == "running" ? Icons.build-fill : Icons.build;
-                label: "Build";
-                style: app.build.status == "running" ? (app.build.agent ? "tertiary" : "filled") : "tonal";
-                enabled: app.build.enabled;
-                agent: app.build.agent;
-                status: app.build.status;
-                busy: app.build.busy;
-                pulse: app.build.agent && app.build.status == "running";
+            alignment: stretch;
+            ActionBar {
+                actions: app.actions;
                 size: 32px;
-                clicked => { root.run-action(app.id, app.build.id); }
+                style: "tonal";
+                triggered(id) => { root.run-action(app.id, id); }
             }
-            SymbolButton {
-                icon: app.run.status == "running" ? Icons.play-fill : Icons.play;
-                label: "Run";
-                style: app.run.status == "running" ? (app.run.agent ? "tertiary" : "filled") : "tonal";
-                enabled: app.run.enabled;
-                agent: app.run.agent;
-                status: app.run.status;
-                busy: app.run.busy;
-                pulse: app.run.agent && app.run.status == "running";
+            if app.status == "running": SymbolButton {
+                icon: Icons.stop;
+                tooltip: "Stop all active actions for " + app.name;
                 size: 32px;
-                clicked => { root.run-action(app.id, app.run.id); }
-            }
-            SymbolButton {
-                icon: app.build-run.status == "running" ? Icons.rocket-fill : Icons.rocket;
-                tooltip: "Build + Run";
-                style: app.build-run.status == "running" ? (app.build-run.agent ? "tertiary" : "filled") : "tonal";
-                enabled: app.build-run.enabled;
-                agent: app.build-run.agent;
-                status: app.build-run.status;
-                busy: app.build-run.busy;
-                pulse: app.build-run.agent && app.build-run.status == "running";
-                size: 32px;
-                clicked => { root.run-action(app.id, app.build-run.id); }
-            }
-            if app.customs.length > 0: SymbolButton {
-                icon: Icons.terminal;
-                tooltip: "Custom actions";
-                size: 32px;
-                clicked => { custom-menu.show(); }
+                icon-size: 18px;
+                icon-color: Theme.error;
+                clicked => { root.stop-app(app.id); }
             }
         }
         for run in app.runs: Rectangle {
@@ -227,18 +202,7 @@ component AppCard inherits Rectangle {
         }
     }
 
-    custom-menu := PopupWindow {
-        x: 10px;
-        y: 60px;
-        width: 220px;
-        Menu {
-            for action in app.customs: MenuItem {
-                text: action.name;
-                icon: action.status == "running" ? Icons.terminal : Icons.chevron-right;
-                clicked => { root.run-action(app.id, action.id); }
-            }
-        }
-    }
+
 }
 
 export component MainWindow inherits Window {
@@ -252,6 +216,7 @@ export component MainWindow inherits Window {
     default-font-size: Theme.body-medium;
 
     in property <string> version;
+    in property <int> theme-mode;
     in property <[AppRow]> apps;
     in property <[RunRow]> tabs;
     in property <[OutputRow]> output;
@@ -297,6 +262,8 @@ export component MainWindow inherits Window {
     callback run-action(string, string);
     callback select-run(string);
     callback stop-run(string);
+    callback stop-app(string);
+    callback cycle-theme();
     callback copy-output();
     callback open-log();
     callback clear-output();
@@ -323,8 +290,8 @@ export component MainWindow inherits Window {
 
     in property <int> output-generation;
 
-    public function set-dark(dark: bool) {
-        Palette.color-scheme = dark ? ColorScheme.dark : ColorScheme.light;
+    public function set-theme(mode: int) {
+        Palette.color-scheme = mode == 1 ? ColorScheme.light : mode == 2 ? ColorScheme.dark : ColorScheme.unknown;
     }
 
     public function scroll-to-end() {
@@ -352,6 +319,14 @@ export component MainWindow inherits Window {
                         color: Theme.on-surface;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
+                    }
+                    SymbolButton {
+                        icon: theme-mode == 1 ? Icons.light-mode : theme-mode == 2 ? Icons.dark-mode : Icons.system-theme;
+                        tooltip: theme-mode == 1 ? "Theme: Light. Click for Dark."
+                            : theme-mode == 2 ? "Theme: Dark. Click for System."
+                            : "Theme: System (" + (Theme.dark ? "Dark" : "Light") + "). Click for Light.";
+                        size: 32px;
+                        clicked => { root.cycle-theme(); }
                     }
                     if agents != "": Rectangle {
                         width: 28px;
@@ -426,6 +401,7 @@ export component MainWindow inherits Window {
                         AppCard {
                             app: app;
                             run-action(a, b) => { root.run-action(a, b); }
+                            stop-app(a) => { root.stop-app(a); }
                             select-run(r) => { root.select-run(r); }
                             edit-app(a) => { root.edit-app(a); }
                             remove-app(a) => { root.remove-app(a); }
@@ -558,6 +534,7 @@ export component MainWindow inherits Window {
                     enabled: output.length > 0;
                     clicked => { root.copy-output(); }
                 }
+                ConsoleThemeButton { }
                 SymbolButton {
                     icon: Icons.description;
                     tooltip: "Open log file";

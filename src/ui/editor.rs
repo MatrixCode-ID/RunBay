@@ -9,7 +9,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use super::{Controller, convert};
 use crate::data::{
-    ActionDef, ActionKind, AppDef, Group, Groups, Retention, Shell, WhenRunning, ids,
+    ACTION_ICONS, ActionDef, ActionKind, AppDef, Group, Groups, Retention, Shell, WhenRunning, ids,
 };
 use crate::platform;
 use crate::{EditorAction, EditorBridge, EnvRow};
@@ -30,6 +30,30 @@ pub struct Draft {
     icon: Option<IconChange>,
     app_env: Rc<VecModel<EnvRow>>,
     action_env: Rc<VecModel<EnvRow>>,
+}
+
+impl Draft {
+    fn add_action(&mut self, kind: ActionKind, settings: &crate::data::Settings) -> Result<()> {
+        if kind != ActionKind::Custom && self.app.action_of(kind).is_some() {
+            bail!("the app already has a {kind:?} action");
+        }
+        let mut action = ActionDef::new(kind, settings);
+        action.id = ids::unique_slug(&action.id, |id| self.app.action(id).is_some());
+        if kind != ActionKind::BuildRun {
+            self.scripts.insert(action.id.clone(), String::new());
+        }
+        self.app.actions.push(action);
+        self.selected = self.app.actions.len() - 1;
+        Ok(())
+    }
+
+    fn remove_selected(&mut self) {
+        if self.selected < self.app.actions.len() {
+            let removed = self.app.actions.remove(self.selected);
+            self.scripts.remove(&removed.id);
+            self.selected = self.selected.min(self.app.actions.len().saturating_sub(1));
+        }
+    }
 }
 
 /// Parses the retention controls (`Off`, `Keep the last runs`, `Forever`).
@@ -163,6 +187,24 @@ impl Controller {
         let ui = self.ui();
         let g = ui.global::<EditorBridge>();
         g.set_is_new(is_new);
+        g.set_action_icon_options(ModelRc::new(VecModel::from(
+            std::iter::once(SharedString::from("Default for action"))
+                .chain(
+                    ACTION_ICONS
+                        .iter()
+                        .map(|(_, label)| SharedString::from(*label)),
+                )
+                .collect::<Vec<_>>(),
+        )));
+        g.set_action_icon_names(ModelRc::new(VecModel::from(
+            std::iter::once(SharedString::new())
+                .chain(
+                    ACTION_ICONS
+                        .iter()
+                        .map(|(name, _)| SharedString::from(*name)),
+                )
+                .collect::<Vec<_>>(),
+        )));
         g.set_error(SharedString::new());
         g.set_name(draft.app.name.clone().into());
         let groups = self.store.load_groups();
@@ -216,7 +258,6 @@ impl Controller {
         let g = ui.global::<EditorBridge>();
         let editor = self.editor.borrow();
         let Some(d) = editor.as_ref() else { return };
-        let action = &d.app.actions[d.selected];
         g.set_actions(ModelRc::new(VecModel::from(
             d.app
                 .actions
@@ -225,12 +266,32 @@ impl Controller {
                     id: a.id.clone().into(),
                     name: a.name.clone().into(),
                     kind: format!("{:?}", a.kind).to_lowercase().into(),
+                    icon_name: a.icon_name().into(),
                     has_script: d.scripts.get(&a.id).is_some_and(|s| !s.trim().is_empty()),
                 })
                 .collect::<Vec<_>>(),
         )));
+        g.set_can_add_build(d.app.action_of(ActionKind::Build).is_none());
+        g.set_can_add_run(d.app.action_of(ActionKind::Run).is_none());
+        g.set_can_add_build_run(d.app.action_of(ActionKind::BuildRun).is_none());
+        let Some(action) = d.app.actions.get(d.selected) else {
+            g.set_selected_action(-1);
+            g.set_action_is_custom(false);
+            g.set_action_has_script_file(false);
+            g.set_action_name(SharedString::new());
+            g.set_script(SharedString::new());
+            d.action_env.set_vec(Vec::new());
+            return;
+        };
         g.set_selected_action(d.selected as i32);
         g.set_action_name(action.name.clone().into());
+        g.set_action_icon_index(
+            action
+                .icon
+                .as_ref()
+                .and_then(|icon| ACTION_ICONS.iter().position(|(name, _)| name == icon))
+                .map_or(0, |i| i as i32 + 1),
+        );
         g.set_script(
             d.scripts
                 .get(&action.id)
@@ -259,9 +320,16 @@ impl Controller {
         let Some(d) = editor.as_mut() else {
             return Ok(());
         };
+        let Some(action) = d.app.actions.get_mut(d.selected) else {
+            return Ok(());
+        };
         let env = env_of(&d.action_env)?;
         let retention = parse_retention(g.get_retention_index(), &g.get_retention_count());
-        let action = &mut d.app.actions[d.selected];
+        action.icon = g
+            .get_action_icon_index()
+            .checked_sub(1)
+            .and_then(|i| ACTION_ICONS.get(i as usize))
+            .map(|(name, _)| name.to_string());
         let name = g.get_action_name().trim().to_string();
         if !name.is_empty() {
             action.name = name;
@@ -333,35 +401,31 @@ impl Controller {
                     .set_working_directory(path.to_string_lossy().as_ref().into());
             }
         }));
-        g.on_add_action(with(|c| {
+        let weak = Rc::downgrade(self);
+        g.on_add_action(move |kind| {
+            let Some(c) = weak.upgrade() else {
+                return;
+            };
             if let Err(e) = c.commit_action() {
                 return c.editor_error(e);
             }
-            if let Some(d) = c.editor.borrow_mut().as_mut() {
+            let result = (|| -> Result<()> {
+                let kind: ActionKind =
+                    serde_json::from_value(serde_json::Value::String(kind.to_string()))?;
                 let settings = c.settings.read().unwrap().clone();
-                let id = ids::unique_slug("custom", |s| d.app.action(s).is_some());
-                d.app.actions.push(ActionDef {
-                    id: id.clone(),
-                    name: "New action".into(),
-                    kind: ActionKind::Custom,
-                    script: None,
-                    working_directory: None,
-                    env: Default::default(),
-                    when_running: settings.default_when_running,
-                    retention: settings.default_retention(ActionKind::Custom),
-                });
-                d.scripts.insert(id, String::new());
-                d.selected = d.app.actions.len() - 1;
+                if let Some(d) = c.editor.borrow_mut().as_mut() {
+                    d.add_action(kind, &settings)?;
+                }
+                Ok(())
+            })();
+            if let Err(e) = result {
+                return c.editor_error(e);
             }
             c.load_selected_action();
-        }));
+        });
         g.on_remove_action(with(|c| {
-            if let Some(d) = c.editor.borrow_mut().as_mut()
-                && d.app.actions[d.selected].kind == ActionKind::Custom
-            {
-                let removed = d.app.actions.remove(d.selected);
-                d.scripts.remove(&removed.id);
-                d.selected = d.selected.saturating_sub(1);
+            if let Some(d) = c.editor.borrow_mut().as_mut() {
+                d.remove_selected();
             }
             c.load_selected_action();
         }));
@@ -370,7 +434,13 @@ impl Controller {
                 c.commit_action()?;
                 let mut editor = c.editor.borrow_mut();
                 let d = editor.as_mut().context("no draft")?;
-                let action_id = d.app.actions[d.selected].id.clone();
+                let action_id = d
+                    .app
+                    .actions
+                    .get(d.selected)
+                    .context("no selected action")?
+                    .id
+                    .clone();
                 // The script must exist on disk for the external editor.
                 let mut app = c.app(&d.app.id).context("save the app first")?;
                 if app.action(&action_id).is_none() {
@@ -403,8 +473,9 @@ impl Controller {
             let editor = c.editor.borrow();
             if let Some(d) = editor.as_ref()
                 && let Some(app) = c.app(&d.app.id)
+                && let Some(action) = d.app.actions.get(d.selected)
             {
-                let action_id = d.app.actions[d.selected].id.clone();
+                let action_id = action.id.clone();
                 let text = c.store.read_script(&app, &action_id);
                 c.ui()
                     .global::<EditorBridge>()
@@ -419,7 +490,7 @@ impl Controller {
                     return c.editor_error(e);
                 }
                 if let Some(d) = c.editor.borrow_mut().as_mut() {
-                    d.selected = (index.max(0) as usize).min(d.app.actions.len() - 1);
+                    d.selected = (index.max(0) as usize).min(d.app.actions.len().saturating_sub(1));
                 }
                 c.load_selected_action();
             }
@@ -432,8 +503,12 @@ impl Controller {
                 }
                 if let Some(d) = c.editor.borrow_mut().as_mut() {
                     let target = d.selected as i64 + delta as i64;
-                    // Custom actions move among themselves, below the standard three.
+                    // Custom actions move among adjacent custom actions.
                     if target >= 0
+                        && d.app
+                            .actions
+                            .get(d.selected)
+                            .is_some_and(|a| a.kind == ActionKind::Custom)
                         && (target as usize) < d.app.actions.len()
                         && d.app.actions[target as usize].kind == ActionKind::Custom
                     {
@@ -539,6 +614,18 @@ impl Controller {
             })
             .collect();
         app.validate().map_err(anyhow::Error::msg)?;
+        for old in &previous.actions {
+            if app.action(&old.id).is_none()
+                && self.manager.active_for_app(&app.id).iter().any(|run| {
+                    let info = run.info();
+                    info.action_id == old.id
+                        || (info.kind == ActionKind::BuildRun
+                            && matches!(old.kind, ActionKind::Build | ActionKind::Run))
+                })
+            {
+                bail!("stop {} before removing it", old.name);
+            }
+        }
         for (action_id, text) in &d.scripts {
             if app.action(action_id).is_some() {
                 let text = text.replace("\r\n", "\n").replace('\n', "\r\n");
@@ -586,6 +673,38 @@ impl Controller {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remove_last_action_and_restore_defaults_without_duplicate_roles() {
+        let settings = crate::data::Settings::default();
+        let mut draft = Draft {
+            app: AppDef::new("a", "A", &settings),
+            is_new: true,
+            scripts: HashMap::from([("build".into(), "old script".into())]),
+            selected: 0,
+            icon: None,
+            app_env: Rc::new(VecModel::default()),
+            action_env: Rc::new(VecModel::default()),
+        };
+        for _ in 0..3 {
+            draft.remove_selected();
+        }
+        assert!(draft.app.actions.is_empty());
+        assert!(draft.scripts.is_empty());
+        draft.remove_selected();
+        draft.app.validate().unwrap();
+        for kind in [ActionKind::Build, ActionKind::Run, ActionKind::BuildRun] {
+            draft.add_action(kind, &settings).unwrap();
+            let action = draft.app.action_of(kind).unwrap();
+            assert_eq!(action.retention, settings.default_retention(kind));
+            assert_eq!(action.when_running, settings.default_when_running);
+            assert!(action.script.is_none());
+            assert!(draft.add_action(kind, &settings).is_err());
+        }
+        draft.add_action(ActionKind::Custom, &settings).unwrap();
+        draft.app.actions[draft.selected].id = "custom-build".into();
+        draft.app.validate().unwrap();
+    }
 
     #[test]
     fn retention_controls_round_trip() {

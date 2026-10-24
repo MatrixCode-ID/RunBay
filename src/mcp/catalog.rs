@@ -193,14 +193,16 @@ pub const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "set_action",
-        description: "Create or update an action of an app. An unknown action_id (or none, with a name) creates a custom action. The script is PowerShell; an empty script removes it. working_directory/env override the app's for this action.",
+        description: "Create or update an action. Use kind to restore a missing build, run, or buildRun role; without kind, reserved ids build/run/build-run restore that role and other new ids create custom actions. Existing kinds cannot change. The script is PowerShell; an empty script removes it. working_directory/env override the app's.",
         read_only: false,
         schema: || {
             object(
                 json!({
                     "app_id": { "type": "string" },
                     "action_id": { "type": "string" },
+                    "kind": { "type": "string", "enum": ["build", "run", "buildRun", "custom"] },
                     "name": { "type": "string" },
+                    "icon": { "type": ["string", "null"], "description": "Action Material Symbol; null restores the default.", "enum": [null, "", "build", "play_arrow", "rocket_launch", "terminal", "refresh", "folder", "folder_open", "description", "settings", "desktop_windows", "bubble_chart"] },
                     "script": { "type": "string" },
                     "working_directory": { "type": ["string", "null"] },
                     "env": env_schema(),
@@ -213,7 +215,7 @@ pub const TOOLS: &[ToolDef] = &[
     },
     ToolDef {
         name: "delete_action",
-        description: "Remove a custom action (Build, Run, and Build + Run cannot be removed).",
+        description: "Remove an action, including Build, Run, or Build + Run. An active action or a dependency of an active Build + Run must be stopped first.",
         read_only: false,
         schema: || {
             object(
@@ -230,10 +232,13 @@ pub const TOOLS: &[ToolDef] = &[
             object(
                 json!({
                     "theme": { "type": "string", "enum": ["system", "light", "dark"] },
+                    "console_theme": { "type": "string", "enum": ["follow", "light", "dark"] },
                     "autostart": { "type": "boolean" },
                     "icon_size": { "type": "string", "enum": ["small", "medium", "large"] },
                     "always_on_top_compact": { "type": "boolean" },
                     "always_on_top_icon": { "type": "boolean" },
+                    "taskbar_full": { "type": "boolean" },
+                    "taskbar_compact": { "type": "boolean" },
                     "output_line_limit": { "type": "integer", "minimum": 100 },
                     "default_when_running": { "type": "string", "enum": ["ask", "reject", "restart", "parallel"] },
                     "auto_update": { "type": "boolean" }

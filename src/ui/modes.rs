@@ -116,6 +116,7 @@ impl Controller {
                     window.set_size(PhysicalSize::new(rect.width, rect.height));
                 }
                 let _ = self.modes.compact.show();
+                self.apply_taskbar_buttons();
                 if let Some(hwnd) = convert::hwnd(window) {
                     platform::bring_to_front(hwnd);
                 }
@@ -196,6 +197,22 @@ impl Controller {
         self.modes.icon.set_pinned(s.always_on_top_icon);
         self.modes.popup.set_pinned(s.always_on_top_icon);
         self.modes.icon.set_size(s.icon_size.px() as f32);
+        self.apply_taskbar_buttons();
+    }
+
+    /// Shows or hides the taskbar buttons of the Full and Compact windows. It runs after
+    /// every show, because the windowing backend may restore its own extended style.
+    pub(super) fn apply_taskbar_buttons(&self) {
+        let s = self.settings.read().unwrap();
+        let ui = self.ui();
+        for (window, visible) in [
+            (ui.window(), s.taskbar_full),
+            (self.modes.compact.window(), s.taskbar_compact),
+        ] {
+            if let Some(hwnd) = convert::hwnd(window) {
+                platform::set_taskbar_button(hwnd, visible);
+            }
+        }
     }
 
     /// Records the rectangles of the visible Compact and Icon windows.
@@ -265,7 +282,6 @@ impl Controller {
     }
 
     pub(super) fn append_popup_lines(&self, lines: &[OutputLine]) {
-        let dark = self.ui().global::<crate::Theme>().get_dark();
         let mut st = self.state.borrow_mut();
         let limit = self.settings.read().unwrap().output_line_limit.max(100) as usize;
         let model = st.popup.output.clone();
@@ -273,7 +289,7 @@ impl Controller {
             .iter()
             .map(|line| {
                 let index = st.popup.selection.next();
-                let row = convert::output_row(&mut st.popup.parser, line, dark, index);
+                let row = convert::output_row(&mut st.popup.parser, line, index);
                 st.popup
                     .selection
                     .lines
@@ -382,6 +398,7 @@ impl Controller {
             "full" => self.switch_mode(Mode::Full),
             "compact" => self.switch_mode(Mode::Compact),
             "pin" => self.toggle_always_on_top(),
+            "copy-mcp-setup" => self.copy_mcp_setup(),
             "small" | "medium" | "large" => {
                 let mut s = self.settings.read().unwrap().clone();
                 s.icon_size = match item {
@@ -467,6 +484,12 @@ impl Controller {
         let bind = |g: MiniBridge<'_>| {
             g.set_version(version.clone());
             let weak = Rc::downgrade(self);
+            g.on_copy_mcp_setup(move || {
+                if let Some(c) = weak.upgrade() {
+                    c.copy_mcp_setup();
+                }
+            });
+            let weak = Rc::downgrade(self);
             g.on_run_action(move |app, action| {
                 if let Some(c) = weak.upgrade() {
                     c.start(RunRequest::ui(&app, &action));
@@ -482,6 +505,12 @@ impl Controller {
             g.on_stop_run(move |run| {
                 if let Some(c) = weak.upgrade() {
                     c.manager.stop(&run);
+                }
+            });
+            let weak = Rc::downgrade(self);
+            g.on_stop_app(move |app| {
+                if let Some(c) = weak.upgrade() {
+                    c.stop_app(&app);
                 }
             });
             let weak = Rc::downgrade(self);
@@ -537,7 +566,7 @@ impl Controller {
         let scale = popup.window().scale_factor();
         let (w, h) = match view {
             "apps" => (320.0, 420.0),
-            "menu" => (210.0, 7.0 * 34.0 + 16.0),
+            "menu" => (250.0, 8.0 * 34.0 + 16.0),
             _ => (300.0, 60.0),
         };
         let (w, h) = ((w * scale) as i32, (h * scale) as i32);
