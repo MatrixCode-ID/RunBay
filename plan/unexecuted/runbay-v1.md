@@ -15,6 +15,7 @@
 | --- | --- |
 | Milestone order | M1 Core → M2 MCP stdio → M3 Full mode complete → M4 Compact & Icon → M5 Auto update → M6 Polish |
 | Platform abstraction | **None.** Implement Windows directly; no traits prepared for Linux. Refactoring for Linux belongs to the RunBay Server work later. |
+| Linux build | **Not a goal for v1.** The crate builds and is tested on Windows only; no `#[cfg(windows)]` gating to make it compile on Linux. Linux support starts with the RunBay Server work. Execute this plan on a Windows machine. |
 | Commits | Commit on `work-bench` at the end of every milestone and push to `private`. No merge to `main` and no release, **except in M5** (below). |
 | Tests | `cargo test` (unit + integration, including real PowerShell scripts) and a CI workflow running build, clippy, and tests on every push to `work-bench` and `main`. |
 | Visual tests | **Allowed** during execution: the executor may start RunBay and use screenshots / computer use to check the UI. |
