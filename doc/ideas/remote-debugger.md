@@ -45,6 +45,14 @@ Linux workstation                              Windows host
 - 2026-10-24: Idea only; not executed now. (user)
 - 2026-10-24: The remote side is a separate application named **RunBay Server**,
   running as a service on the remote host. (user)
+- 2026-10-24: **Replaces the decision above on how it runs:** RunBay Server is
+  an **application started when a user logs on**, not a Windows service. It only
+  serves while that user is logged on. (user)
+- 2026-10-24: RunBay Server is a **separate executable** from RunBay. (user)
+- 2026-10-24: Its users are almost all Windows developers. It is a development
+  tool only and must not be used to run applications for end users or in
+  non-development environments; security hardening is therefore not a main
+  concern. (user)
 - 2026-10-24: Purpose: develop Windows applications from Linux. RunBay runs on
   Linux, connects to RunBay Server on a Windows host, and agents use RunBay to
   build and debug there. (user)
@@ -82,6 +90,21 @@ Linux workstation                              Windows host
   z-order), input injection, and the user session staying logged in and
   unlocked (auto-logon, virtual display driver for headless hosts).
 
+## Running at logon instead of as a service (agent notes, not decided)
+
+- Gains: the server and every app it starts live in the interactive user's
+  session, so the session 0 problem disappears (no launching into another
+  session with the user's token); capture and input work directly; no admin
+  rights are needed to install (start at logon through the user's `Run` key,
+  like RunBay's own autostart); simpler to build and debug.
+- Costs: nothing is served before logon or after logoff, so a dedicated host
+  needs auto-logon; the screen must not lock (input is blocked on the lock
+  screen); a crash is not restarted by the service manager (a small watchdog or
+  a logon scheduled task with restart can cover it); builds that need admin
+  rights need the server started elevated (e.g. a logon scheduled task with
+  highest privileges).
+- A headless host still needs a display to render on (virtual display driver).
+
 ## Notes from the discussion (agent, not decided)
 
 - **Reuse:** the specification already separates who issues commands (GUI, MCP
@@ -98,17 +121,20 @@ Linux workstation                              Windows host
 - **Agents:** MCP tools can return images, so a tool such as
   `capture_window(run_id)` lets an agent check the UI it built. This is useful
   locally too, before any remote support.
-- **Service and session 0:** a Windows service runs in session 0, which has no
-  desktop, so applications started there cannot be seen or captured. RunBay
-  Server must start the actions in the interactive user's session (e.g. through
-  the logged-on user's token) and capture there.
+- **Service and session 0** (superseded by running at logon): a Windows service
+  runs in session 0, which has no desktop, so applications started there cannot
+  be seen or captured; a service would have to start actions in the interactive
+  user's session through the user's token.
 - **Locked screen / minimized RDP:** rendering may stop, so capture can be empty
   or frozen.
 - **Capture border:** Windows 10 draws a yellow border around captured windows;
   Windows 11 can turn it off.
-- **Security:** running PowerShell remotely is remote code execution by design.
-  Needs device pairing with keys (no passwords), encryption, an allowlist of
-  machines, an access mode like *Ask first* on the server side, and an audit log.
+- **Security** (scaled down by the development-only decision): running
+  PowerShell remotely is remote code execution by design. Because the project is
+  open source and others may expose a server by mistake, a light baseline is
+  still suggested: a pairing key instead of an open port, encryption (RDP's
+  TLS), and a clear "development use only" notice in the README and the server
+  UI.
 - **Footprint:** network and video encoding stay out of the desktop app's idle
   path, so RunBay keeps its memory targets.
 - **Keeping the door open in v1 (no scope change):** keep the internal protocol
