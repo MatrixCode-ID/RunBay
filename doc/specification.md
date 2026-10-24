@@ -27,6 +27,7 @@ and stores the output of every run.
 | Source and releases | Published on GitHub (`MatrixCode-ID/RunBay`); the executable is distributed through GitHub Releases |
 | Versioning | SemVer, starting at **1.0.0-alpha.1**; stages **alpha → beta → release**, with **no update channels** |
 | Auto update | Checks on startup and every 6 hours; downloads automatically, installs when the user agrees; can be turned off |
+| Agent access | **MCP over stdio** (`RunBay.exe --mcp`, bridged to the GUI through a named pipe): run actions and read output, manage apps/actions, and change settings. Access setting Off / Ask first / Unrestricted. Agent activity is clearly marked in the GUI |
 | PowerShell | `pwsh.exe` (7) by default; falls back to `powershell.exe` (5.1) when not found. Can be forced per app |
 | Build+Run | Run is **cancelled** when the build ends with exit code ≠ 0 |
 | Action while the app is still running | Set **per action** in the GUI: Ask / Reject / Stop and restart / Parallel. Default for a new action: **Ask** |
@@ -139,8 +140,10 @@ RunBay's own metadata is kept apart from the data of registered apps.
 One JSON line per run, appended to the end of the file:
 
 ```json
-{"runId":"20261024-101530-build-a3f1","actionId":"build","start":"2026-10-24T10:15:30+07:00","end":"2026-10-24T10:16:02+07:00","exitCode":0,"status":"success","log":"2026-10/20261024-101530-build-a3f1.log"}
+{"runId":"20261024-101530-build-a3f1","actionId":"build","start":"2026-10-24T10:15:30+07:00","end":"2026-10-24T10:16:02+07:00","exitCode":0,"status":"success","source":"mcp","agent":"Claude Code","log":"2026-10/20261024-101530-build-a3f1.log"}
 ```
+
+`source`: `ui` or `mcp`; `agent` is the MCP client name and is omitted for `ui`.
 
 `status`: `running`, `success`, `failed`, `stopped`, `skipped` (the run part of a
 build+run cancelled because the build failed). On startup, `running` entries
@@ -295,6 +298,7 @@ App editor dialog (from Full; Compact/Icon open Full for this):
 | Default retention for new actions | as in §2 |
 | Default `whenRunning` for new actions | Ask |
 | Auto update | On |
+| MCP access (Off / Ask first / Unrestricted) | Ask first |
 
 **Load with Windows** writes a `RunBay` value under
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` holding the executable path
@@ -314,7 +318,8 @@ with the `--autostart` argument; turning it off removes the value. With
 ## 10. Single instance
 
 Only one instance per user. Starting RunBay again focuses the window of the
-running instance and exits.
+running instance and exits. The instance is found through its named pipe, which
+also serves the MCP bridge (§15.1).
 
 ## 11. Non-functional targets
 
@@ -356,6 +361,8 @@ One application crate (`runbay`) with these modules:
 | `ui` | Slint components (`.slint`) per mode, theme tokens, model bindings |
 | `platform` | Tray, autostart registry, single instance, Windows theme detection, monitor positions |
 | `update` | Release lookup, download, checksum verification, executable swap |
+| `ipc` | Named pipe server in the GUI instance and the versioned internal protocol |
+| `mcp` | `--mcp` bridge: MCP over stdio, tool schemas, mapping to `ipc`; confirmation, agent markers, and undo live in the GUI side |
 
 The runner works on its own thread; the UI only receives events through
 `slint::invoke_from_event_loop`.
@@ -438,7 +445,121 @@ listed in the release notes.
 - A version the user dismisses with **Skip this version** is not offered again
   until a newer one is published.
 
-## 15. Out of scope for the first version
+## 15. MCP server for agents
+
+Coding agents (e.g. Claude Code, Codex) can use RunBay through the Model Context
+Protocol to manage apps, actions, and settings, and to build and run apps.
+
+### 15.1 Connection: stdio bridge
+
+```
+Agent (MCP client)
+   │  stdio, JSON-RPC (MCP)
+   ▼
+RunBay.exe --mcp          ← bridge: no window, no business logic
+   │  named pipe \\.\pipe\RunBay-<user SID>
+   ▼
+RunBay (GUI, single instance)  ← runs actions, stores data, updates the UI
+```
+
+- The agent starts `RunBay.exe --mcp` as a stdio MCP server, e.g.
+  `{"command": "C:\\Tools\\RunBay\\RunBay.exe", "args": ["--mcp"]}`.
+- The bridge only translates MCP requests to the internal pipe protocol and back.
+  Every action, edit, and setting change is executed by the GUI instance, so the
+  GUI always shows what an agent does, and the same rules apply as for clicks
+  (`whenRunning`, retention, badges, history).
+- When the GUI is not running, the bridge starts it (last mode and position, as
+  with `--autostart`) and waits for the pipe; it fails after 10 seconds.
+- The pipe is the same one used for single instance activation. Its ACL allows
+  only the current Windows user; no network port is opened.
+- The internal pipe protocol is versioned; a bridge and GUI with different
+  protocol versions refuse the connection with a clear error (relevant during
+  auto update).
+- Several agents may be connected at the same time, each through its own bridge.
+- The agent name shown in the GUI comes from `clientInfo.name` sent in the MCP
+  `initialize` request.
+
+### 15.2 Access setting
+
+A setting **MCP access** in the GUI decides what agents may do:
+
+| Value | Behavior |
+| --- | --- |
+| **Off** | Every tool call fails with "MCP access is turned off in RunBay". |
+| **Ask first** (default) | Read-only tools run directly. Every tool that runs, stops, or changes something shows a confirmation dialog in RunBay. |
+| **Unrestricted** | All tools run without confirmation. |
+
+Confirmation dialog (shown near the active window or the floating icon, always
+on top): agent name, the requested operation in plain words (e.g. *Run "Build"
+of My App*, *Change the script of My App › Build*), and the buttons **Allow**,
+**Allow all from this agent until it disconnects**, and **Deny**. Without an
+answer within 2 minutes the call is denied. The tool result tells the agent when
+a call was denied.
+
+### 15.3 Tools
+
+Read-only (never need confirmation):
+
+| Tool | Purpose |
+| --- | --- |
+| `list_apps` | Apps with id, name, group, order, last run status, and their actions |
+| `get_app` | One app with all settings, actions, and script contents |
+| `list_runs` | Run history, filterable by app, action, status, and source; newest first, with `limit` |
+| `get_run` | Status, exit code, start/end, source, and log path of one run |
+| `read_output` | Output of a run (live while running): `tail` lines, or `offset` + `limit` lines |
+| `get_settings` | RunBay settings |
+
+Run (confirmation in *Ask first*):
+
+| Tool | Purpose |
+| --- | --- |
+| `run_action` | Start an action. `wait` (default `false`): `true` waits for the run to end, up to `timeout_seconds` (default 600), and returns status, exit code, duration, and the last `tail` lines (default 200); `false` returns the `run_id` at once. When the run outlives the timeout it keeps running and the result says so. |
+| `wait_run` | Wait for a started run, with the same result as `run_action` with `wait: true` |
+| `stop_run` | Stop a run (whole process tree) |
+
+The `whenRunning` rule of the action applies. For `ask`, an agent cannot answer
+the GUI dialog; `run_action` therefore takes `if_running` (`restart` or
+`parallel`). Without it, the call fails with "app is running" and lists the
+active runs. `reject` always rejects.
+
+While a run is waited on, the bridge sends MCP progress notifications with new
+output lines when the agent supplied a progress token.
+
+Edit apps (confirmation in *Ask first*):
+
+| Tool | Purpose |
+| --- | --- |
+| `create_app` | Add an app (name, group, working directory, shell, env) |
+| `update_app` | Change app fields, order, or group |
+| `delete_app` | Remove an app and its history; **always** confirmed in the GUI, even when *Unrestricted* |
+| `set_app_icon` | Copy an image file (png/ico/svg) as the app icon |
+| `set_action` | Create or update an action, including its script, working directory, env, `whenRunning`, and retention |
+| `delete_action` | Remove a custom action |
+
+Edit settings (confirmation in *Ask first*):
+
+| Tool | Purpose |
+| --- | --- |
+| `update_settings` | Change settings, except **MCP access** itself, which only the GUI can change |
+
+### 15.4 Agent activity in the GUI
+
+- **Action buttons**: a run started by an agent shows its running state in the
+  **tertiary** color (runs started by a click use primary), with a small agent
+  icon (`smart_toy`) in the corner of the button, and the button plays its
+  press animation as if pressed.
+- **Agent chip**: app cards, output tabs, and Action History entries of agent
+  runs show a chip **"by <agent name>"**.
+- **History**: every run records `source` (`ui` or `mcp`) and, for MCP, the
+  agent name; Action History can filter by source.
+- **Connection indicator**: while at least one agent is connected, the tray icon
+  and the floating icon show a small dot; hovering lists the connected agents.
+- **Changes**: when an agent changes an app, action, script, or setting, a
+  snackbar shows what changed (e.g. *Claude Code updated My App › Build script*)
+  with **Undo**, which restores the previous state of that change. The snackbar
+  shows in Full and Compact mode, and next to the floating icon in Icon mode.
+
+## 16. Out of scope for the first version
 
 - Windows toast notifications.
 - Extracting icons from `.exe` files and built-in Material Symbols icons for apps.
@@ -446,8 +567,10 @@ listed in the release notes.
 - Interactive input to the stdin of a running process.
 - Platforms other than Windows.
 - Syncing or importing/exporting configuration between machines.
+- MCP over HTTP and a plain command-line interface (e.g. `RunBay.exe run …`);
+  both could reuse the named pipe later.
 
-## 16. Open questions
+## 17. Open questions
 
 None blocking. Defaults not specified by the user (icon sizes in px, the
 10,000-line limit, the Compact window size, memory targets) are proposals and can
