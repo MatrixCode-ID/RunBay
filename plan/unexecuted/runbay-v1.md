@@ -262,3 +262,98 @@ After execution, append a section **Execution report** to this file (then move i
 `plan/executed/`): what was done per milestone with commit hashes, test and CI results, measured
 performance numbers, visual checks done, choices made where the plan was silent, deviations, and
 remaining work.
+
+## Execution report
+
+- **Date:** 2026-10-24
+- **Executor:** Claude Code
+- **State:** M1–M4 done; M5 code done and tested locally, the public releases are **not**
+  done yet; M6 partly done. The plan stays in `plan/unexecuted/` until M5 and M6 finish.
+
+### Per milestone
+
+| Milestone | Commit(s) on `work-bench` | Result |
+| --- | --- | --- |
+| M1 Core | `a01da61` | Data folder, runner (Job Object, UTF-8, stdout/stderr, buildRun, whenRunning), ANSI, single instance pipe, minimal Full mode, logo, icons, CI, notices |
+| M2 MCP stdio | `0e53abf` | Versioned pipe protocol, `--mcp` bridge on `rmcp`, all tools of §15.3, access setting and confirmation dialog, agent markers, Undo, `--headless` |
+| M3 Full mode | `598baec` | Full editor, Action History flyout, settings page, tray, hide to tray, exit confirmation, load with Windows, window state, About |
+| M4 Compact & Icon | `b732559` | Compact window, floating icon with native drag and edge snap, icon popup, per-mode always on top and positions, Light/Dark |
+| M5 Auto update | `c85f62d`, `c21885c` | Update module, badges, Restart to update, Skip, fixture tests, release note `1.0.0-alpha.1`; releases pending (see below) |
+| M6 Polish | — (README uncommitted at report time, committed with this report) | README; performance measured once; memory work moved to its own plan |
+
+### Tests and CI
+
+- Local: 48 unit tests, 14 runner integration tests (real PowerShell), 3 MCP
+  integration tests (headless instance + bridge over stdio), 2 updater fixture tests;
+  all green. `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` clean.
+- CI (`ci.yml`, private repository): the M1 run failed on one test (8.3 short temp
+  paths on the runner); fixed in M2. Later runs were cancelled by newer pushes
+  (`cancel-in-progress`); the run for `c85f62d` was still in progress when this report
+  was written. A green CI run is still to be confirmed before merging to `main`.
+
+### Visual checks (screenshots outside the repository)
+
+Full mode (dark, light), live colored output with tabs and auto-scroll, editor,
+settings, Action History, agent confirmation dialog and agent markers, Compact mode
+with the output popup, floating icon with badge, popup, right-click menu, drag and
+edge snap, hide to tray and re-activation by a second start. Local update test:
+alpha.1 (debug build) detected alpha.2 from a local server (`RUNBAY_UPDATE_API`),
+downloaded and verified it, showed *Update ready*, and *Restart to update* restarted
+as alpha.2 in the same position with `RunBay.exe.old` removed.
+
+### Performance (release build, 2026-10-24)
+
+| Target | Measured | Status |
+| --- | --- | --- |
+| Startup < 300 ms | 383 ms first start, ~30 ms afterwards (process start until the window exists) | met when warm; first start slightly above |
+| Idle CPU ~0% | 0 ms CPU over 10 s idle | met |
+| Idle memory (Full) < 60 MB | 171.6 MB working set (femtovg) | **not met** — moved to [memory-footprint plan](memory-footprint.md) on the user's instruction (no memory optimization in this execution) |
+| Compact/Icon < 30 MB | not measured | see the memory plan |
+
+Release executable size: 27 MB.
+
+### Choices where the plan was silent
+
+- Scripts run through a `-Command` bootstrap instead of `-File`, so UTF-8 output can
+  be set before the script starts (spec §5.1 updated).
+- A run lasts until its whole process tree has exited (spec §5.1 updated).
+- Empty working directory falls back to the app data folder; logs are stored without
+  ANSI escapes; scripts are saved as UTF-8 with BOM (spec updated).
+- A failed build in Build + Run records status `failed`; `skipped` stays reserved.
+- `wait_run` is never confirmed (it changes nothing).
+- Agent removals go to `data/meta/trash/` so Undo works; emptied on the next start.
+- `--data-dir` gets its own pipe name; `--headless` for tests; `RUNBAY_UPDATE_API`
+  for update tests (spec updated).
+- Dialogs (ask, agent confirmations) bring up the Full window while Compact/Icon mode
+  is active.
+- The Icon popup, right-click menu, and Icon snackbar are a separate frameless window,
+  because Slint popups are clipped to the 56 px icon window (fallback of §9).
+- `panic = "abort"` was not used in the release profile (a panic in a reader thread
+  must not end the app).
+- Local builds need the VS 2022 MSVC environment on this machine (the VS 18 install
+  lacks the x64 CRT libraries); CI is unaffected.
+
+### Deviations
+
+- Drag and drop reordering of apps is replaced by *Move up / Move down* and the group
+  field in the editor; recorded in [doc/ideas/drag-reorder.md](../../doc/ideas/drag-reorder.md).
+- App menu has no *Duplicate*.
+- The repository `MatrixCode-ID/RunBay` was already made public by the user before
+  M5, so step M5 §3.2 (`gh repo edit --visibility public`) was skipped. Because it is
+  public, the private-data review (§3.1) is repeated before every push of `main` to
+  `origin`; `work-bench` is pushed only to `private`. The review before this report
+  found no private data.
+- No manual check with Claude Code as an MCP client was done (the protocol is covered
+  by the integration test).
+
+### Remaining work
+
+1. M5 §3.3–3.5: confirm a green CI run, merge `work-bench` into `main`, push `main` to
+   `origin`, confirm the `v1.0.0-alpha.1` release with `RunBay.exe` and `SHA256SUMS`;
+   bump to `1.0.0-alpha.2` with its release note, release again, and test the real
+   update alpha.1 → alpha.2 from GitHub.
+2. M6: Material 3 Expressive pass (e.g. monospace font in the script editor, the
+   pulsing agent button, native title bar color in light mode), error handling review,
+   README screenshots.
+3. Memory footprint: [plan/unexecuted/memory-footprint.md](memory-footprint.md)
+   (proposed decisions need the user's confirmation).
