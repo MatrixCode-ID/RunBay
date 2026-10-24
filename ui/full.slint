@@ -315,6 +315,7 @@ export component MainWindow inherits Window {
     callback about-notices();
     callback check-updates();
     callback exit-answer(string);
+    callback switch-mode(string);
     callback remove-app(string);
     callback confirm-remove();
     callback ask-answer(string);
@@ -406,6 +407,16 @@ export component MainWindow inherits Window {
                         clicked => { root.toggle-history(); }
                     }
                     Rectangle { horizontal-stretch: 1; }
+                    SymbolButton {
+                        icon: Icons.compact;
+                        tooltip: "Compact mode";
+                        clicked => { root.switch-mode("compact"); }
+                    }
+                    SymbolButton {
+                        icon: Icons.bubble;
+                        tooltip: "Icon mode";
+                        clicked => { root.switch-mode("icon"); }
+                    }
                     SymbolButton {
                         icon: Icons.settings;
                         tooltip: "Settings";

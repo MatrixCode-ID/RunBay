@@ -205,7 +205,7 @@ Checked when an action is triggered while the same app still has an active run:
 
 | Value | Behavior |
 | --- | --- |
-| `ask` | Dialog: *Stop and run*, *Run in parallel*, *Cancel* |
+| `ask` | Dialog: *Stop and run*, *Run in parallel*, *Cancel* (in the Full window, shown for the dialog when another mode is active) |
 | `reject` | Not started; a short message says the app is still running |
 | `restart` | The app's active runs are stopped, then the new action starts |
 | `parallel` | Starts immediately alongside the active runs |
@@ -290,7 +290,10 @@ A small resizable window (default about 320×420).
   (like an Android chat bubble); its position is saved.
 - Clicking opens a popup with app cards (icon, name, badge, action buttons,
   message icon) that behaves like Compact. The popup closes on an outside click
-  or Esc.
+  or Esc. It opens on the side of the icon that faces the screen (left when the
+  icon sits on the right edge). The popup, the right-click menu, and agent
+  snackbars are a separate small frameless window next to the icon; the icon
+  and that window do not appear in the taskbar.
 - The aggregated badge is shown in a corner of the icon.
 - Right-click: switch mode, always on top, icon size, exit.
 
@@ -542,8 +545,9 @@ A setting **MCP access** in the GUI decides what agents may do:
 | **Ask first** (default) | Read-only tools run directly. Every tool that runs, stops, or changes something shows a confirmation dialog in RunBay. |
 | **Unrestricted** | All tools run without confirmation. |
 
-Confirmation dialog (shown near the active window or the floating icon, always
-on top): agent name, the requested operation in plain words (e.g. *Run "Build"
+Confirmation dialog (shown in the Full window, which is brought to the front
+for the dialog also while Compact or Icon mode is active and hidden again after
+the answer): agent name, the requested operation in plain words (e.g. *Run "Build"
 of My App*, *Change the script of My App › Build*), and the buttons **Allow**,
 **Allow all from this agent until it disconnects**, and **Deny**. Without an
 answer within 2 minutes the call is denied. The tool result tells the agent when

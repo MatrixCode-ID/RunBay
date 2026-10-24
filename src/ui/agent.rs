@@ -55,6 +55,7 @@ impl AgentUi for UiAgent {
         let _ = slint::invoke_from_event_loop(move || {
             with_controller(|c| {
                 c.ui().set_agents(agents.join(", ").into());
+                c.each_mini(|g| g.set_agents(agents.join(", ").into()));
                 c.state.borrow_mut().agents = agents;
                 c.refresh_tray();
             })
@@ -113,7 +114,7 @@ impl Controller {
                 ui.set_agent_ask_single(p.request.single_only);
                 ui.set_agent_ask_visible(true);
                 drop(st);
-                self.show_window();
+                self.show_full_for_dialog();
             }
             None => ui.set_agent_ask_visible(false),
         }
@@ -142,6 +143,7 @@ impl Controller {
             let _ = p.answer.send(decision);
         }
         self.show_confirmation();
+        self.end_full_for_dialog();
     }
 
     pub(super) fn agent_changed(&self, description: String, undo: Undo) {
@@ -149,6 +151,7 @@ impl Controller {
         self.snackbar_for(description, Duration::from_secs(8));
         self.state.borrow_mut().undo = Some(undo);
         self.ui().set_snackbar_undo(true);
+        self.each_mini(|g| g.set_snackbar_undo(true));
     }
 
     /// Reloads what an agent may have changed: apps, settings, and the theme.

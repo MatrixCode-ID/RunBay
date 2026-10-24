@@ -90,6 +90,14 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
         host: host.clone(),
         editor: RefCell::new(None),
         tray: RefCell::new(None),
+        modes: modes::ModeWindows {
+            compact: crate::CompactWindow::new().context("cannot create the Compact window")?,
+            icon: crate::IconWindow::new().context("cannot create the Icon window")?,
+            popup: crate::IconPopup::new().context("cannot create the Icon popup")?,
+        },
+        popup_timer: RefCell::new(None),
+        theme_overridden: std::cell::Cell::new(false),
+        icon_timer: RefCell::new(None),
         state: RefCell::new(State {
             output: Rc::new(VecModel::default()),
             ..State::default()
@@ -104,7 +112,9 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
     controller.bind_settings();
     controller.bind_history();
     controller.bind_close();
+    controller.bind_modes();
     controller.restore_full_window();
+    controller.state.borrow_mut().mode = controller.store.load_window_state().mode;
     controller.create_tray();
     if controller.settings.read().unwrap().autostart {
         // Keeps the registry path right when the executable moved.
@@ -181,6 +191,12 @@ struct State {
     mode: crate::data::Mode,
     /// Maximize the Full window when it is shown the first time.
     full_maximized: bool,
+    /// The output popup of Compact and Icon mode.
+    popup: modes::PopupState,
+    /// The Full window is shown only for a dialog while another mode is active.
+    full_for_dialog: bool,
+    /// The floating icon sits on the right edge (its popup opens to the left).
+    icon_right: bool,
 }
 
 struct Controller {
@@ -192,6 +208,11 @@ struct Controller {
     state: RefCell<State>,
     editor: RefCell<Option<editor::Draft>>,
     tray: RefCell<Option<platform::tray::Tray>>,
+    modes: modes::ModeWindows,
+    icon_timer: RefCell<Option<Rc<slint::Timer>>>,
+    popup_timer: RefCell<Option<Rc<slint::Timer>>>,
+    /// A theme override was applied (switching back to "Follow Windows" must reset it).
+    theme_overridden: std::cell::Cell<bool>,
 }
 
 impl Controller {
@@ -208,8 +229,14 @@ impl Controller {
             ThemePref::Light => Some(false),
             ThemePref::Dark => Some(true),
         };
-        if let Some(dark) = scheme {
+        // Following Windows after an override needs the current Windows theme.
+        let dark = scheme.unwrap_or_else(platform::system_is_dark);
+        let was_overridden = self.theme_overridden.replace(scheme.is_some());
+        if scheme.is_some() || was_overridden {
             ui.invoke_set_dark(dark);
+            self.modes.compact.invoke_set_dark(dark);
+            self.modes.icon.invoke_set_dark(dark);
+            self.modes.popup.invoke_set_dark(dark);
         }
     }
 
@@ -424,7 +451,17 @@ impl Controller {
         self.state.borrow_mut().undo = None;
         let ui = self.ui();
         ui.set_snackbar_undo(false);
-        ui.set_snackbar(text.into());
+        ui.set_snackbar(text.clone().into());
+        self.each_mini(|g| {
+            g.set_snackbar(text.clone().into());
+            g.set_snackbar_undo(false);
+        });
+        let icon_mode = self.state.borrow().mode == crate::data::Mode::Icon;
+        if icon_mode
+            && !(self.modes.popup.window().is_visible() && self.modes.popup.get_view() == "apps")
+        {
+            self.show_icon_popup("snackbar");
+        }
         let weak = self.window.clone();
         slint::Timer::single_shot(duration, move || {
             with_controller(|c| {
@@ -432,6 +469,13 @@ impl Controller {
                 if current && let Some(ui) = weak.upgrade() {
                     ui.set_snackbar(SharedString::new());
                     ui.set_snackbar_undo(false);
+                    c.each_mini(|g| {
+                        g.set_snackbar(SharedString::new());
+                        g.set_snackbar_undo(false);
+                    });
+                    if c.modes.popup.get_view() == "snackbar" {
+                        c.hide_icon_popup();
+                    }
                     c.state.borrow_mut().undo = None;
                 }
             });
@@ -480,6 +524,7 @@ impl Controller {
                     .map(|r| r.app_name.clone())
                     .unwrap_or_default();
                 self.state.borrow_mut().pending_ask = Some(request);
+                self.show_full_for_dialog();
                 let ui = self.ui();
                 ui.set_ask_text(
                     format!(
@@ -505,7 +550,9 @@ impl Controller {
     fn answer_ask(&self, answer: &str) {
         let ui = self.ui();
         ui.set_ask_visible(false);
-        let Some(mut request) = self.state.borrow_mut().pending_ask.take() else {
+        let pending = self.state.borrow_mut().pending_ask.take();
+        self.end_full_for_dialog();
+        let Some(mut request) = pending else {
             return;
         };
         request.decision = match answer {
@@ -529,6 +576,9 @@ impl Controller {
                 if self.state.borrow().displayed.as_deref() == Some(run_id.as_str()) {
                     self.append_lines(&lines);
                 }
+                if self.state.borrow().popup.run_id.as_deref() == Some(run_id.as_str()) {
+                    self.append_popup_lines(&lines);
+                }
             }
             RunEvent::Finished(info) => {
                 if info.log_path.is_some() {
@@ -541,6 +591,7 @@ impl Controller {
                 self.refresh_nav();
                 self.refresh_header();
                 self.refresh_history();
+                self.refresh_popup_header();
             }
         }
     }
@@ -755,7 +806,16 @@ impl Controller {
             .find(|status| rows.iter().any(|r| r.status.as_str() == *status))
             .unwrap_or_default();
         self.state.borrow_mut().aggregate = aggregate.to_string();
-        self.ui().set_apps(ModelRc::new(VecModel::from(rows)));
+        let model = ModelRc::new(VecModel::from(rows));
+        self.ui().set_apps(model.clone());
+        self.each_mini(|g| g.set_apps(model.clone()));
+        let agent_running = self
+            .manager
+            .active()
+            .iter()
+            .any(|r| r.info().agent.is_some());
+        self.modes.icon.set_status(aggregate.into());
+        self.modes.icon.set_status_agent(agent_running);
         self.refresh_tray();
     }
 

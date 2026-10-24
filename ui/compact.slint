@@ -1,0 +1,523 @@
+// Compact mode (small app list window) and Icon mode (floating round icon with a popup).
+
+import { ListView, Palette } from "std-widgets.slint";
+import { Theme, Icons } from "theme.slint";
+import { SymbolButton, StatusBadge, AgentChip, Avatar } from "components.slint";
+import { Span, OutputRow, ActionButton, RunRow, AppRow } from "types.slint";
+
+// Data and callbacks shared by the Compact window and the Icon popup.
+export global MiniBridge {
+    in-out property <[AppRow]> apps;
+    in-out property <[OutputRow]> output;
+    in-out property <string> output-title;
+    in-out property <string> output-status;
+    in-out property <string> output-agent;
+    in-out property <string> output-run-id;
+    in-out property <string> version;
+    in-out property <string> update-badge;
+    in-out property <string> agents;
+    in-out property <string> snackbar;
+    in-out property <bool> snackbar-undo;
+    callback run-action(string, string);
+    callback open-output(string);
+    callback stop-run(string);
+    callback open-in-full(string);
+    callback switch-mode(string);
+    callback version-clicked();
+    callback undo-clicked();
+}
+
+component MiniOutputLine inherits Rectangle {
+    in property <OutputRow> line;
+    height: 16px;
+    HorizontalLayout {
+        alignment: start;
+        padding-left: 8px;
+        for span in line.spans: Text {
+            text: span.text;
+            color: span.colored ? span.color : line.stderr ? Theme.console-error : Theme.console-text;
+            font-family: Theme.mono-font;
+            font-size: 12px;
+            font-weight: span.bold ? 700 : 400;
+            wrap: no-wrap;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// The live output of an app's last run, with Stop and Open in Full.
+component OutputCard inherits Rectangle {
+    border-radius: Theme.corner-large;
+    background: Theme.surface-container-high;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000055;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 6px;
+            Text {
+                text: MiniBridge.output-title == "" ? "No runs yet" : MiniBridge.output-title;
+                color: Theme.on-surface;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            StatusBadge {
+                status: MiniBridge.output-status;
+                agent: MiniBridge.output-agent != "";
+                y: (parent.height - self.height) / 2;
+            }
+            SymbolButton {
+                icon: Icons.stop;
+                tooltip: "Stop";
+                size: 30px;
+                enabled: MiniBridge.output-status == "running";
+                clicked => { MiniBridge.stop-run(MiniBridge.output-run-id); }
+            }
+            SymbolButton {
+                icon: Icons.open-full;
+                tooltip: "Open in Full";
+                size: 30px;
+                clicked => { MiniBridge.open-in-full(MiniBridge.output-run-id); }
+            }
+        }
+        if MiniBridge.output-agent != "": AgentChip { agent: MiniBridge.output-agent; }
+        Rectangle {
+            background: Theme.console-background;
+            border-radius: Theme.corner-medium;
+            clip: true;
+            list := ListView {
+                for row in MiniBridge.output: MiniOutputLine { line: row; }
+                changed content-height => {
+                    self.content-y = min(0px, self.visible-height - self.content-height);
+                }
+            }
+        }
+    }
+}
+
+// One app row: icon, name, badge, action icons, custom menu, and message icon.
+component MiniAppRow inherits Rectangle {
+    in property <AppRow> app;
+    callback show-output(string);
+    height: 70px;
+    border-radius: Theme.corner-medium;
+    background: touch.has-hover ? Theme.surface-container-high : transparent;
+    touch := TouchArea { }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 6px;
+        spacing: 8px;
+        Avatar {
+            icon: app.icon;
+            has-icon: app.has-icon;
+            initial: app.initial;
+            size: 32px;
+            y: 8px;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            padding-top: 6px;
+            padding-bottom: 4px;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: 6px;
+                Text {
+                    text: app.name;
+                    color: Theme.on-surface;
+                    font-weight: 600;
+                    overflow: elide;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                StatusBadge {
+                    status: app.status;
+                    agent: app.status-agent;
+                    size: 16px;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+            if app.error != "": Text {
+                text: "Cannot be loaded";
+                color: Theme.error;
+                font-size: Theme.label-small;
+            }
+            if app.error == "": HorizontalLayout {
+                spacing: 2px;
+                alignment: start;
+                SymbolButton {
+                    icon: app.build.status == "running" ? Icons.build-fill : Icons.build;
+                    tooltip: "Build";
+                    size: 30px;
+                    icon-size: 18px;
+                    enabled: app.build.enabled;
+                    style: app.build.status == "running" ? (app.build.agent ? "tertiary" : "filled") : "standard";
+                    agent: app.build.agent;
+                    pulse: app.build.agent && app.build.status == "running";
+                    clicked => { MiniBridge.run-action(app.id, app.build.id); }
+                }
+                SymbolButton {
+                    icon: app.run.status == "running" ? Icons.play-fill : Icons.play;
+                    tooltip: "Run";
+                    size: 30px;
+                    icon-size: 18px;
+                    enabled: app.run.enabled;
+                    style: app.run.status == "running" ? (app.run.agent ? "tertiary" : "filled") : "standard";
+                    agent: app.run.agent;
+                    pulse: app.run.agent && app.run.status == "running";
+                    clicked => { MiniBridge.run-action(app.id, app.run.id); }
+                }
+                SymbolButton {
+                    icon: app.build-run.status == "running" ? Icons.rocket-fill : Icons.rocket;
+                    tooltip: "Build + Run";
+                    size: 30px;
+                    icon-size: 18px;
+                    enabled: app.build-run.enabled;
+                    style: app.build-run.status == "running" ? (app.build-run.agent ? "tertiary" : "filled") : "standard";
+                    agent: app.build-run.agent;
+                    pulse: app.build-run.agent && app.build-run.status == "running";
+                    clicked => { MiniBridge.run-action(app.id, app.build-run.id); }
+                }
+                if app.customs.length > 0: SymbolButton {
+                    icon: Icons.terminal;
+                    tooltip: "Custom actions";
+                    size: 30px;
+                    icon-size: 18px;
+                    clicked => { custom-menu.show(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                SymbolButton {
+                    icon: app.status == "running" ? Icons.chat-fill : Icons.chat;
+                    tooltip: "Last output";
+                    size: 30px;
+                    icon-size: 18px;
+                    clicked => { root.show-output(app.id); }
+                }
+            }
+        }
+    }
+    custom-menu := PopupWindow {
+        x: root.width - 200px;
+        y: root.height;
+        width: 200px;
+        Rectangle {
+            border-radius: Theme.corner-small;
+            background: Theme.surface-container;
+            drop-shadow-blur: 8px;
+            drop-shadow-color: #00000040;
+            VerticalLayout {
+                padding: 6px;
+                for action in app.customs: Rectangle {
+                    height: 36px;
+                    background: item-touch.has-hover ? Theme.surface-container-highest : transparent;
+                    border-radius: 6px;
+                    Text {
+                        x: 12px;
+                        text: action.name;
+                        color: Theme.on-surface;
+                        vertical-alignment: center;
+                    }
+                    item-touch := TouchArea {
+                        clicked => { MiniBridge.run-action(app.id, action.id); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The app list with its output popup, used by Compact mode and the Icon popup.
+component AppList inherits Rectangle {
+    ListView {
+        for app in MiniBridge.apps: MiniAppRow {
+            app: app;
+            show-output(id) => {
+                MiniBridge.open-output(id);
+                output-popup.show();
+            }
+        }
+    }
+    output-popup := PopupWindow {
+        x: 6px;
+        y: 40px;
+        width: root.width - 12px;
+        height: min(320px, root.height - 48px);
+        close-policy: close-on-click-outside;
+        OutputCard { }
+    }
+}
+
+component Snackbar inherits Rectangle {
+    visible: MiniBridge.snackbar != "";
+    height: MiniBridge.snackbar == "" ? 0 : 44px;
+    border-radius: Theme.corner-small;
+    background: Theme.inverse-surface;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 6px;
+        spacing: 6px;
+        Text {
+            text: MiniBridge.snackbar;
+            color: Theme.inverse-on-surface;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if MiniBridge.snackbar-undo: Rectangle {
+            width: undo-label.preferred-width + 16px;
+            undo-label := Text {
+                text: "Undo";
+                color: Theme.inverse-primary;
+                font-weight: 600;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { MiniBridge.undo-clicked(); }
+            }
+        }
+    }
+}
+
+export component CompactWindow inherits Window {
+    public function set-dark(dark: bool) {
+        Palette.color-scheme = dark ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    title: "RunBay";
+    icon: @image-url("logo/runbay-64.png");
+    preferred-width: 320px;
+    preferred-height: 420px;
+    min-width: 260px;
+    min-height: 200px;
+    background: Theme.surface-container;
+    in property <bool> pinned;
+    always-on-top: pinned;
+    callback toggle-pin();
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding: 8px;
+            spacing: 2px;
+            Image {
+                source: Icons.logo;
+                width: 22px;
+                height: 22px;
+                y: (parent.height - self.height) / 2;
+            }
+            Text {
+                text: "RunBay";
+                color: Theme.on-surface;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            if MiniBridge.agents != "": Image {
+                source: Icons.agent;
+                width: 18px;
+                colorize: Theme.tertiary;
+                y: (parent.height - self.height) / 2;
+                accessible-role: text;
+                accessible-label: "Connected agents: " + MiniBridge.agents;
+            }
+            SymbolButton {
+                icon: pinned ? Icons.pin-fill : Icons.pin;
+                tooltip: pinned ? "Always on top: on" : "Always on top: off";
+                style: pinned ? "tonal" : "standard";
+                size: 32px;
+                clicked => { root.toggle-pin(); }
+            }
+            SymbolButton {
+                icon: Icons.bubble;
+                tooltip: "Icon mode";
+                size: 32px;
+                clicked => { MiniBridge.switch-mode("icon"); }
+            }
+            SymbolButton {
+                icon: Icons.full;
+                tooltip: "Full mode";
+                size: 32px;
+                clicked => { MiniBridge.switch-mode("full"); }
+            }
+        }
+        AppList {
+            vertical-stretch: 1;
+        }
+        Snackbar { }
+        Rectangle {
+            height: 28px;
+            footer-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { MiniBridge.version-clicked(); }
+            }
+            HorizontalLayout {
+                padding-left: 10px;
+                spacing: 6px;
+                alignment: start;
+                Text {
+                    text: "RunBay " + MiniBridge.version;
+                    color: footer-touch.has-hover ? Theme.primary : Theme.on-surface-variant;
+                    font-size: Theme.label-small;
+                    vertical-alignment: center;
+                }
+                if MiniBridge.update-badge != "": Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    height: 18px;
+                    width: compact-badge.preferred-width + 12px;
+                    border-radius: 9px;
+                    background: Theme.tertiary-container;
+                    compact-badge := Text {
+                        text: MiniBridge.update-badge;
+                        color: Theme.on-tertiary-container;
+                        font-size: Theme.label-small;
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component IconWindow inherits Window {
+    public function set-dark(dark: bool) {
+        Palette.color-scheme = dark ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    title: "RunBay";
+    icon: @image-url("logo/runbay-64.png");
+    no-frame: true;
+    background: transparent;
+    in property <length> size: 56px;
+    in property <bool> pinned: true;
+    in property <string> status;
+    in property <bool> status-agent;
+    always-on-top: pinned;
+    width: size;
+    height: size;
+    callback pressed();
+    callback clicked();
+    callback right-clicked();
+
+    WindowMoveArea {
+        Rectangle {
+            border-radius: self.width / 2;
+            background: Theme.primary-container;
+            Image {
+                source: Icons.logo;
+                width: parent.width * 0.72;
+                height: parent.height * 0.72;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                        root.pressed();
+                    }
+                    if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                        root.right-clicked();
+                    }
+                }
+                clicked => { root.clicked(); }
+            }
+        }
+        if status != "": Rectangle {
+            x: parent.width - self.width;
+            y: parent.height - self.height;
+            width: max(16px, size * 0.32);
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.surface;
+            StatusBadge {
+                status: status;
+                agent: status-agent;
+                size: parent.width - 2px;
+            }
+        }
+        if MiniBridge.agents != "": Rectangle {
+            x: parent.width - self.width;
+            y: 0px;
+            width: max(10px, size * 0.2);
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.success;
+            border-width: 2px;
+            border-color: Theme.surface;
+        }
+    }
+}
+
+// The window next to the floating icon: app cards ("apps"), the right-click menu
+// ("menu"), or a snackbar for agent changes ("snackbar").
+export component IconPopup inherits Window {
+    public function set-dark(dark: bool) {
+        Palette.color-scheme = dark ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    title: "RunBay";
+    no-frame: true;
+    background: transparent;
+    always-on-top: true;
+    in property <string> view: "apps";
+    in property <bool> pinned;
+    callback menu-action(string);
+    callback dismissed();
+    width: view == "apps" ? 320px : view == "menu" ? 210px : 300px;
+    height: view == "apps" ? 420px : view == "menu" ? 7 * 34px + 16px : 60px;
+
+    FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.dismissed();
+                return accept;
+            }
+            return reject;
+        }
+        Rectangle {
+            x: 4px;
+            y: 4px;
+            width: parent.width - 8px;
+            height: parent.height - 8px;
+            border-radius: Theme.corner-large;
+            background: view == "snackbar" ? Theme.inverse-surface : Theme.surface-container;
+            border-width: 1px;
+            border-color: Theme.outline-variant;
+            clip: true;
+            if view == "apps": VerticalLayout {
+                padding: 6px;
+                AppList {
+                    vertical-stretch: 1;
+                }
+                Snackbar { }
+            }
+            if view == "snackbar": VerticalLayout {
+                padding: 4px;
+                Snackbar { }
+            }
+            if view == "menu": VerticalLayout {
+                padding: 6px;
+                for item in [
+                    { id: "full", text: "Full mode" },
+                    { id: "compact", text: "Compact mode" },
+                    { id: "pin", text: pinned ? "Always on top  ✓" : "Always on top" },
+                    { id: "small", text: "Icon size: small" },
+                    { id: "medium", text: "Icon size: medium" },
+                    { id: "large", text: "Icon size: large" },
+                    { id: "exit", text: "Exit" },
+                ]: Rectangle {
+                    height: 34px;
+                    background: menu-touch.has-hover ? Theme.surface-container-highest : transparent;
+                    border-radius: 6px;
+                    Text {
+                        x: 12px;
+                        text: item.text;
+                        color: item.id == "exit" ? Theme.error : Theme.on-surface;
+                        vertical-alignment: center;
+                    }
+                    menu-touch := TouchArea {
+                        clicked => { root.menu-action(item.id); }
+                    }
+                }
+            }
+        }
+    }
+}

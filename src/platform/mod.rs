@@ -63,6 +63,47 @@ pub fn bring_to_front(hwnd: isize) {
     }
 }
 
+/// Hides a window from the taskbar and Alt+Tab (used for the floating icon).
+pub fn set_tool_window(hwnd: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    };
+    let hwnd = HWND(hwnd as *mut _);
+    // SAFETY: plain style change on a window owned by this process.
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let new = (style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize);
+        if new != style {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
+        }
+    }
+}
+
+/// The window that has the keyboard focus.
+pub fn foreground_window() -> isize {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    // SAFETY: plain query.
+    unsafe { GetForegroundWindow().0 as isize }
+}
+
+/// True when `hwnd` belongs to this process.
+pub fn same_process(hwnd: isize) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+    let mut pid = 0u32;
+    // SAFETY: plain query; a stale handle only yields 0.
+    unsafe {
+        GetWindowThreadProcessId(HWND(hwnd as *mut _), Some(&mut pid));
+    }
+    pid == std::process::id()
+}
+
+/// True while the left mouse button is held down.
+pub fn left_button_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+    // SAFETY: plain state query.
+    unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 }
+}
+
 /// Opens a file or folder with its Windows association (Explorer for folders).
 pub fn open_path(path: &Path) -> Result<()> {
     if !path.exists() {
