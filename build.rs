@@ -17,4 +17,6 @@ fn main() {
         res.compile().expect("cannot embed Windows resources");
     }
     println!("cargo:rerun-if-changed=ui/logo/runbay.ico");
+    // The version resource follows the package version.
+    println!("cargo:rerun-if-changed=Cargo.toml");
 }
