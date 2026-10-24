@@ -161,8 +161,14 @@ fn environment_working_directory_and_utf8() {
         lines.contains(&format!("RUN={}", run.info().run_id)),
         "{lines:?}"
     );
-    assert!(
-        lines.contains(&format!("DIR={}", sub.display())),
+    // Compare canonical paths: temp folders may be reported in their 8.3 short form.
+    let dir = lines
+        .iter()
+        .find_map(|l| l.strip_prefix("DIR="))
+        .expect("DIR line");
+    assert_eq!(
+        std::fs::canonicalize(dir).unwrap(),
+        std::fs::canonicalize(&sub).unwrap(),
         "{lines:?}"
     );
     assert!(lines.contains(&"héllo ✓ 日本".to_string()), "{lines:?}");

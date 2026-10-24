@@ -3,24 +3,20 @@
 //! The pipe serves single instance activation and (from the MCP bridge) the versioned
 //! request/response protocol. Messages are JSON lines.
 
+pub mod host;
 pub mod pipe;
+pub mod protocol;
+mod tools;
 
 use std::io::{BufRead, BufReader, Write};
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+
+pub use protocol::{Hello, Reply};
 
 /// Version of the internal pipe protocol; a bridge and GUI with different versions refuse
 /// to talk to each other.
 pub const PROTOCOL_VERSION: u32 = 1;
-
-/// The first message of every connection.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum Hello {
-    /// Another RunBay process asks the running instance to show its window.
-    Activate,
-}
 
 /// Asks a running instance to show its window. Returns false when none is running.
 pub fn activate_running_instance(name: &str) -> Result<bool> {

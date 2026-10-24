@@ -1,6 +1,7 @@
 //! The GUI process: window setup, the controller that maps data and runs to the Slint
-//! models, and the pipe server for single instance activation.
+//! models, and the pipe server for single instance activation and agents.
 
+mod agent;
 mod convert;
 
 use std::cell::RefCell;
@@ -8,6 +9,7 @@ use std::collections::HashMap;
 use std::io::{BufReader, Write};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -15,6 +17,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::ansi::AnsiParser;
 use crate::data::{ActionKind, AppDef, Groups, LoadedApp, RunRecord, Settings, Store, ThemePref};
+use crate::ipc::host::Host;
 use crate::ipc::{self, Hello, pipe::PipeListener};
 use crate::platform;
 use crate::runner::{OutputLine, Run, RunEvent, RunManager, RunRequest, StartOutcome};
@@ -27,6 +30,8 @@ pub struct Options {
     pub data_dir: PathBuf,
     /// Started with Windows (`--autostart`).
     pub autostart: bool,
+    /// Development option for tests: serve the pipe without a window.
+    pub headless: bool,
 }
 
 /// Selects the femtovg (OpenGL) renderer, or the software renderer when OpenGL is missing.
@@ -49,20 +54,35 @@ fn select_backend() {
 
 /// Runs the GUI until the window closes. `listener` is the bound single instance pipe.
 pub fn run(options: Options, listener: PipeListener) -> Result<()> {
-    select_backend();
     let store = Store::open(&options.data_dir)?;
+    store.empty_trash();
     let settings = store.load_settings();
     let manager = RunManager::new(store.clone(), settings.output_line_limit);
     manager.startup_cleanup();
+    let settings = Arc::new(RwLock::new(settings));
 
+    if options.headless {
+        let host = Host::new(store, manager, settings, Arc::new(agent::HeadlessAgent));
+        listener.serve(move |pipe| handle_connection(&host, pipe));
+        return Ok(());
+    }
+
+    select_backend();
+    let host = Host::new(
+        store.clone(),
+        manager.clone(),
+        settings.clone(),
+        Arc::new(agent::UiAgent),
+    );
     let window = MainWindow::new().context("cannot create the window")?;
     window.set_version(crate::VERSION.into());
     let controller = Rc::new(Controller {
         window: window.as_weak(),
         manager: manager.clone(),
         store,
+        settings,
+        host: host.clone(),
         state: RefCell::new(State {
-            settings,
             output: Rc::new(VecModel::default()),
             ..State::default()
         }),
@@ -80,7 +100,7 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
 
     std::thread::Builder::new()
         .name("runbay-pipe".into())
-        .spawn(move || listener.serve(handle_connection))
+        .spawn(move || listener.serve(move |pipe| handle_connection(&host, pipe)))
         .context("cannot start the pipe server")?;
 
     window.run().context("the event loop failed")?;
@@ -88,13 +108,14 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
     Ok(())
 }
 
-fn handle_connection(pipe: std::fs::File) {
+fn handle_connection(host: &Arc<Host>, pipe: std::fs::File) {
     let mut reader = BufReader::new(pipe);
     match ipc::read_hello(&mut reader) {
         Ok(Some(Hello::Activate)) => {
             let _ = slint::invoke_from_event_loop(|| with_controller(|c| c.show_window()));
             let _ = reader.get_mut().write_all(b"{\"ok\":true}\n");
         }
+        Ok(Some(hello)) => host.serve(hello, reader),
         Ok(None) => {}
         Err(e) => log::warn!("bad pipe message: {e:#}"),
     }
@@ -113,7 +134,6 @@ fn with_controller(f: impl FnOnce(&Rc<Controller>)) {
 
 #[derive(Default)]
 struct State {
-    settings: Settings,
     apps: Vec<LoadedApp>,
     groups: Groups,
     /// History records per app, newest last (cache).
@@ -130,12 +150,18 @@ struct State {
     /// Log file of the displayed run when it is not in memory.
     displayed_log: Option<PathBuf>,
     snackbar_generation: u64,
+    /// Undo of the agent change shown in the snackbar.
+    undo: Option<crate::ipc::host::Undo>,
+    /// Agent confirmations waiting to be shown; the first one is visible.
+    confirmations: std::collections::VecDeque<agent::PendingConfirmation>,
 }
 
 struct Controller {
     window: slint::Weak<MainWindow>,
     manager: RunManager,
     store: Store,
+    settings: Arc<RwLock<Settings>>,
+    host: Arc<Host>,
     state: RefCell<State>,
 }
 
@@ -148,7 +174,7 @@ impl Controller {
 
     fn apply_theme(&self) {
         let ui = self.ui();
-        let scheme = match self.state.borrow().settings.theme {
+        let scheme = match self.settings.read().unwrap().theme {
             ThemePref::System => None,
             ThemePref::Light => Some(false),
             ThemePref::Dark => Some(true),
@@ -291,6 +317,22 @@ impl Controller {
             });
         }
         ui.on_version_clicked(|| {});
+        {
+            let c = c.clone();
+            ui.on_agent_ask_answer(move |answer| {
+                if let Some(c) = c() {
+                    c.answer_confirmation(&answer);
+                }
+            });
+        }
+        {
+            let c = c.clone();
+            ui.on_undo_clicked(move || {
+                if let Some(c) = c() {
+                    c.undo();
+                }
+            });
+        }
     }
 
     fn report(&self, result: Result<()>) {
@@ -301,22 +343,32 @@ impl Controller {
 
     /// Shows a short message at the bottom of the window for a few seconds.
     fn snackbar(&self, text: String) {
+        self.snackbar_for(text, Duration::from_secs(4));
+    }
+
+    /// Shows a snackbar for `duration`; returns its generation.
+    fn snackbar_for(&self, text: String, duration: Duration) -> u64 {
         let generation = {
             let mut st = self.state.borrow_mut();
             st.snackbar_generation += 1;
             st.snackbar_generation
         };
-        self.ui().set_snackbar(text.into());
+        self.state.borrow_mut().undo = None;
+        let ui = self.ui();
+        ui.set_snackbar_undo(false);
+        ui.set_snackbar(text.into());
         let weak = self.window.clone();
-        slint::Timer::single_shot(Duration::from_secs(4), move || {
+        slint::Timer::single_shot(duration, move || {
             with_controller(|c| {
-                if c.state.borrow().snackbar_generation == generation
-                    && let Some(ui) = weak.upgrade()
-                {
+                let current = c.state.borrow().snackbar_generation == generation;
+                if current && let Some(ui) = weak.upgrade() {
                     ui.set_snackbar(SharedString::new());
+                    ui.set_snackbar_undo(false);
+                    c.state.borrow_mut().undo = None;
                 }
             });
         });
+        generation
     }
 
     fn app(&self, id: &str) -> Option<AppDef> {
@@ -427,7 +479,7 @@ impl Controller {
     fn append_lines(&self, lines: &[OutputLine]) {
         let dark = self.ui().global::<Theme>().get_dark();
         let mut st = self.state.borrow_mut();
-        let limit = st.settings.output_line_limit.max(100) as usize;
+        let limit = self.settings.read().unwrap().output_line_limit.max(100) as usize;
         let mut columns = st.columns;
         let rows: Vec<OutputRow> = lines
             .iter()
@@ -475,7 +527,7 @@ impl Controller {
                                 stderr: false,
                             })
                             .collect();
-                        let limit = self.state.borrow().settings.output_line_limit as usize;
+                        let limit = self.settings.read().unwrap().output_line_limit as usize;
                         let skip = lines.len().saturating_sub(limit);
                         self.append_lines(&lines[skip..]);
                     }
@@ -799,7 +851,7 @@ impl Controller {
             let name = ui.get_editor_name().trim().to_string();
             let id = ui.get_editor_app_id().to_string();
             let mut app = if id.is_empty() {
-                let settings = self.state.borrow().settings.clone();
+                let settings = self.settings.read().unwrap().clone();
                 self.store.create_app(&name, &settings)?
             } else {
                 self.store.ensure_unique_name(&name, Some(&id))?;

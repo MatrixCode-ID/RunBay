@@ -261,6 +261,15 @@ export component MainWindow inherits Window {
     in property <string> output-run-id;
     in property <bool> output-has-log;
     in property <string> snackbar;
+    in property <bool> snackbar-undo;
+    // Names of the connected MCP agents, joined by ", ".
+    in property <string> agents;
+
+    // Agent confirmation dialog.
+    in-out property <bool> agent-ask-visible;
+    in property <string> agent-ask-agent;
+    in property <string> agent-ask-operation;
+    in property <bool> agent-ask-single;
 
     // App editor (minimal in M1).
     in-out property <bool> editor-visible;
@@ -294,6 +303,8 @@ export component MainWindow inherits Window {
     callback open-working-directory(string);
     callback open-data-folder(string);
     callback version-clicked();
+    callback agent-ask-answer(string);
+    callback undo-clicked();
 
     // Keeps the output scrolled to the end until the user scrolls up.
     property <bool> follow: true;
@@ -328,6 +339,41 @@ export component MainWindow inherits Window {
                         color: Theme.on-surface;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
+                    }
+                    if agents != "": Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 14px;
+                        background: Theme.tertiary-container;
+                        accessible-role: text;
+                        accessible-label: "Connected agents: " + agents;
+                        Image {
+                            source: Icons.agent;
+                            width: 18px;
+                            colorize: Theme.on-tertiary-container;
+                        }
+                        Rectangle {
+                            x: parent.width - 9px;
+                            y: 1px;
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 4px;
+                            background: Theme.success;
+                        }
+                        agents-touch := TouchArea { }
+                        if agents-touch.has-hover: Rectangle {
+                            x: parent.width - self.width;
+                            y: parent.height + 4px;
+                            width: agents-tip.preferred-width + 16px;
+                            height: 24px;
+                            border-radius: 4px;
+                            background: Theme.inverse-surface;
+                            agents-tip := Text {
+                                text: "Connected: " + agents;
+                                color: Theme.inverse-on-surface;
+                                font-size: Theme.label-medium;
+                            }
+                        }
                     }
                 }
                 ListView {
@@ -501,14 +547,32 @@ export component MainWindow inherits Window {
     if snackbar != "": Rectangle {
         x: (parent.width - self.width) / 2;
         y: parent.height - self.height - 24px;
-        width: min(snack-text.preferred-width + 32px, parent.width - 48px);
+        width: min(snack-layout.preferred-width, parent.width - 48px);
         height: 48px;
         border-radius: Theme.corner-small;
         background: Theme.inverse-surface;
-        snack-text := Text {
-            text: snackbar;
-            color: Theme.inverse-on-surface;
-            wrap: word-wrap;
+        snack-layout := HorizontalLayout {
+            padding-left: 16px;
+            padding-right: snackbar-undo ? 8px : 16px;
+            spacing: 8px;
+            Text {
+                text: snackbar;
+                color: Theme.inverse-on-surface;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if snackbar-undo: Rectangle {
+                width: undo-text.preferred-width + 24px;
+                undo-text := Text {
+                    text: "Undo";
+                    color: Theme.inverse-primary;
+                    font-weight: 600;
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.undo-clicked(); }
+                }
+            }
         }
     }
 
@@ -605,6 +669,51 @@ export component MainWindow inherits Window {
                 text: "Remove";
                 style: "danger";
                 clicked => { root.confirm-remove(); }
+            }
+        }
+    }
+
+    if agent-ask-visible: DialogFrame {
+        title: agent-ask-agent + " asks RunBay to:";
+        dialog-width: 480px;
+        dismissed => { }
+        HorizontalLayout {
+            spacing: 12px;
+            Image {
+                source: Icons.agent;
+                width: 24px;
+                colorize: Theme.tertiary;
+            }
+            Text {
+                text: agent-ask-operation;
+                color: Theme.on-surface;
+                font-size: Theme.body-large;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+        Text {
+            text: "Without an answer within 2 minutes the request is denied.";
+            color: Theme.on-surface-variant;
+            font-size: Theme.body-small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            PillButton {
+                text: "Deny";
+                clicked => { root.agent-ask-answer("deny"); }
+            }
+            if !agent-ask-single: PillButton {
+                text: "Allow all until it disconnects";
+                style: "tonal";
+                clicked => { root.agent-ask-answer("all"); }
+            }
+            PillButton {
+                text: "Allow";
+                style: "filled";
+                clicked => { root.agent-ask-answer("allow"); }
             }
         }
     }

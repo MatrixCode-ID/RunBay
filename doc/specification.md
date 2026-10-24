@@ -512,6 +512,15 @@ RunBay (GUI, single instance)  ← runs actions, stores data, updates the UI
 - The internal pipe protocol is versioned; a bridge and GUI with different
   protocol versions refuse the connection with a clear error (relevant during
   auto update).
+- Each bridge keeps one **session** connection open while it runs (this is how
+  the GUI knows which agents are connected) and opens a separate **call**
+  connection per tool call, so calls can run concurrently (e.g. `read_output`
+  while `wait_run` waits). Messages are JSON lines.
+- A GUI started by the bridge does not inherit the agent's stdio handles and
+  leaves the agent's job object when allowed, so closing the agent does not close
+  RunBay.
+- Development option `--headless` (with `--data-dir`): serves the pipe without a
+  window, for integration tests. Confirmations are denied in this mode.
 - Several agents may be connected at the same time, each through its own bridge.
 - The agent name shown in the GUI comes from `clientInfo.name` sent in the MCP
   `initialize` request.
@@ -551,7 +560,7 @@ Run (confirmation in *Ask first*):
 | Tool | Purpose |
 | --- | --- |
 | `run_action` | Start an action. `wait` (default `false`): `true` waits for the run to end, up to `timeout_seconds` (default 600), and returns status, exit code, duration, and the last `tail` lines (default 200); `false` returns the `run_id` at once. When the run outlives the timeout it keeps running and the result says so. |
-| `wait_run` | Wait for a started run, with the same result as `run_action` with `wait: true` |
+| `wait_run` | Wait for a started run, with the same result as `run_action` with `wait: true`. Waiting changes nothing, so it is never confirmed |
 | `stop_run` | Stop a run (whole process tree) |
 
 The `whenRunning` rule of the action applies. For `ask`, an agent cannot answer
@@ -561,6 +570,9 @@ active runs. `reject` always rejects.
 
 While a run is waited on, the bridge sends MCP progress notifications with new
 output lines when the agent supplied a progress token.
+
+Tool results are returned both as JSON text content and as `structuredContent`;
+failures are tool results with `isError: true` and a message for the agent.
 
 Edit apps (confirmation in *Ask first*):
 
@@ -593,7 +605,9 @@ Edit settings (confirmation in *Ask first*):
   and the floating icon show a small dot; hovering lists the connected agents.
 - **Changes**: when an agent changes an app, action, script, or setting, a
   snackbar shows what changed (e.g. *Claude Code updated My App › Build script*)
-  with **Undo**, which restores the previous state of that change. The snackbar
+  with **Undo**, which restores the previous state of that change. An app
+  removed by an agent is moved to `data/meta/trash/` so Undo can bring it back;
+  the trash is emptied on the next start. The snackbar
   shows in Full and Compact mode, and next to the floating icon in Icon mode.
 
 ## 16. Out of scope for the first version

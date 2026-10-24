@@ -219,6 +219,48 @@ impl Store {
         fs::remove_dir_all(&dir).with_context(|| format!("cannot delete {}", dir.display()))
     }
 
+    /// Moves an app folder to `meta/trash/` (so an agent's removal can be undone) and returns
+    /// where it went. The trash is emptied on the next start.
+    pub fn trash_app(&self, id: &str) -> Result<PathBuf> {
+        if !is_slug(id) {
+            bail!("invalid app id \"{id}\"");
+        }
+        let trash = self.meta_dir().join("trash");
+        fs::create_dir_all(&trash)?;
+        let target = trash.join(format!(
+            "{id}-{}",
+            chrono::Local::now().format("%Y%m%d-%H%M%S%3f")
+        ));
+        fs::rename(self.app_dir(id), &target)
+            .with_context(|| format!("cannot move the app \"{id}\" to the trash"))?;
+        Ok(target)
+    }
+
+    /// Deletes everything in `meta/trash/`.
+    pub fn empty_trash(&self) {
+        let trash = self.meta_dir().join("trash");
+        if trash.exists()
+            && let Err(e) = fs::remove_dir_all(&trash)
+        {
+            log::warn!("cannot empty the trash: {e}");
+        }
+    }
+
+    /// Copies an image file as the app icon (`icon.<ext>`), replacing the previous one.
+    /// The caller saves `app` afterwards.
+    pub fn set_icon(&self, app: &mut AppDef, source: &Path, ext: &str) -> Result<()> {
+        let dir = self.app_dir(&app.id);
+        let bytes =
+            fs::read(source).with_context(|| format!("cannot read {}", source.display()))?;
+        if let Some(old) = app.icon.take() {
+            let _ = fs::remove_file(dir.join(old));
+        }
+        let name = format!("icon.{ext}");
+        write_atomic(&dir.join(&name), &bytes)?;
+        app.icon = Some(name);
+        Ok(())
+    }
+
     /// Absolute path of an action's script, if it has one.
     pub fn script_path(&self, app: &AppDef, action_id: &str) -> Option<PathBuf> {
         let action = app.action(action_id)?;

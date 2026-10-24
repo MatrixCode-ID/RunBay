@@ -8,6 +8,7 @@ pub mod ansi;
 pub mod data;
 pub mod ipc;
 pub mod logging;
+pub mod mcp;
 pub mod platform;
 pub mod runner;
 pub mod ui;
