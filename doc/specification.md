@@ -343,7 +343,13 @@ overload rendering.
   action buttons shaped as pills/rounded squares that morph when pressed).
 - Expressive motion: short spring transitions for the Action History flyout, the
   icon popup, and badge changes; no animation while idle.
-- UI icons: Material Symbols (Rounded) as a bundled font.
+- UI icons (buttons, toolbars, menus, badges): **Font Awesome Free**, the latest
+  release at implementation time (7.x), bundled as font files and pinned to an
+  exact version; upgrades are deliberate. Only the Free Solid and Regular styles
+  are used (no Pro icons). Font Awesome Free fonts are SIL OFL 1.1 and its icons
+  CC BY 4.0; the About dialog lists the Font Awesome attribution and license
+  next to the Slint attribution, and the license texts ship in
+  `THIRD-PARTY-NOTICES.md`.
 - Console output uses a monospace font (Cascadia Mono when available, falling
   back to Consolas).
 - The "Made with Slint" attribution is shown in the About dialog, as required by
@@ -546,7 +552,7 @@ Edit settings (confirmation in *Ask first*):
 
 - **Action buttons**: a run started by an agent shows its running state in the
   **tertiary** color (runs started by a click use primary), with a small agent
-  icon (`smart_toy`) in the corner of the button, and the button plays its
+  icon (Font Awesome `robot`) in the corner of the button, and the button plays its
   press animation as if pressed.
 - **Agent chip**: app cards, output tabs, and Action History entries of agent
   runs show a chip **"by <agent name>"**.
@@ -562,7 +568,7 @@ Edit settings (confirmation in *Ask first*):
 ## 16. Out of scope for the first version
 
 - Windows toast notifications.
-- Extracting icons from `.exe` files and built-in Material Symbols icons for apps.
+- Extracting icons from `.exe` files and built-in Font Awesome icons for apps.
 - Syntax highlighting in the script editor.
 - Interactive input to the stdin of a running process.
 - Platforms other than Windows.
