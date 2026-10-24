@@ -95,6 +95,11 @@ RunBay will be published as open source under the **MIT license**.
   `main` tracks `origin/main`. Never push `work-bench` to `origin`.
 - Publishing: merge `work-bench` into `main`, then push `main` to `origin`.
 - Commit or push only when the user asks.
+- Before every commit, check the current branch. If it is `main`, switch to
+  `work-bench` first (`git switch work-bench`, which carries uncommitted changes;
+  stop and report if the switch fails or `work-bench` is behind `main`) and commit
+  there. Commits never land on `main` directly; `main` only receives
+  `work-bench` through the publishing merge (user decision 2026-10-24).
 - Commit messages are in English, with a short imperative title (e.g.
   `Add Job Object based process runner`).
 
