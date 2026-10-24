@@ -161,7 +161,7 @@ impl Controller {
     fn default_compact_rect(&self) -> WindowRect {
         let (_, _, r, b) = self.primary_area();
         let scale = self.modes.compact.window().scale_factor();
-        let (w, h) = ((320.0 * scale) as i32, (420.0 * scale) as i32);
+        let (w, h) = ((360.0 * scale) as i32, (420.0 * scale) as i32);
         WindowRect {
             x: r - w - 24,
             y: b - h - 24,
@@ -444,6 +444,12 @@ impl Controller {
     }
 
     pub(super) fn bind_modes(self: &Rc<Self>) {
+        let weak = Rc::downgrade(self);
+        self.modes.compact.on_cycle_theme(move || {
+            if let Some(c) = weak.upgrade() {
+                c.cycle_theme();
+            }
+        });
         let weak = Rc::downgrade(self);
         self.modes.compact.on_caption_minimize(move || {
             if let Some(c) = weak.upgrade() {

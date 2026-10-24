@@ -327,6 +327,10 @@ Maximize/Restore, and Close at the right. Empty space, the logo, and the title
 are native drag targets. Double-click toggles maximize; the maximize button
 supports the Windows 11 Snap Layouts flyout. Native resize edges, shadow,
 rounded corners, Aero Snap, and the system menu are retained.
+Full and Compact install their custom caption and saved taskbar policy when the
+native window becomes available, including the initial startup. No Settings
+change is needed to remove the native caption. A saved maximized Full window is
+restored only after its native frame has been initialized.
 
 ```
 ┌──────────────┬───────────────────────────────────┬─────────────┐
@@ -370,13 +374,16 @@ rounded corners, Aero Snap, and the system menu are retained.
 
 ### 6.2 Compact
 
-A small resizable window (default about 320×420). Its existing header is the
-custom title bar: logo, RunBay, connected-agent indicator, pin, Icon mode,
+A small resizable window (default about 360×420, minimum width 360 px). Its existing header is the
+custom title bar: logo, RunBay, connected-agent indicator, theme, pin, Icon mode,
 Full mode, Minimize, and Close. The logo, title, and empty space allow native
 dragging; the agent indicator and controls remain interactive. Compact cannot
 maximize (including double-click and Win+Up), and has no Maximize button.
 The native frame retains resize, shadow, rounded corners, Aero Snap, and the
 system menu in both taskbar settings.
+The theme button cycles System → Light → Dark → System, sharing the saved
+application preference with Full. The minimum width accommodates all header
+controls even with a connected-agent indicator.
 
 - List of apps (icon, name, badge) with direct icons for all configured actions,
   including custom actions. The same width-based overflow menu as Full is used.
@@ -386,7 +393,7 @@ system menu in both taskbar settings.
   run, live while running, with Stop and Open in Full buttons. Its output uses
   the same selection, copying, and follow-mode controls as Full (§5.3), with the
   configured on-screen line limit.
-- Buttons: always on top (pin), switch mode, Minimize, Close.
+- Buttons: theme, always on top (pin), switch mode, Minimize, Close.
 - **Copy MCP setup** copies the Claude Desktop/Codex setup instructions (§15.1)
   directly from the Compact window.
 - **Version**: the RunBay version is shown in a small footer of the window,
@@ -552,6 +559,9 @@ overload rendering.
   color roles (primary, secondary, tertiary, surface container, error) for
   Light/Dark, the M3 type scale, and **Expressive shapes** (large corners, main
   action buttons shaped as pills/rounded squares that morph when pressed).
+- Settings switches use RunBay color roles: selected tracks use primary and
+  selected thumbs use on-primary for clear contrast in both Light and Dark.
+  Unselected switches use surface-container-highest with outline borders/thumbs.
 - Expressive motion: short spring transitions for the Action History flyout, the
   icon popup, and badge changes; no animation while idle.
 - Full caption buttons are 46×36 px with 16 px Material Symbols Rounded icons

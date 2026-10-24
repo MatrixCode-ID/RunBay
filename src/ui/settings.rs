@@ -13,6 +13,17 @@ use crate::data::{
 use crate::platform::{self, autostart};
 
 impl Controller {
+    /// Cycles the saved application theme from either window's theme button.
+    pub(super) fn cycle_theme(&self) {
+        let mut settings = self.settings.read().unwrap().clone();
+        settings.theme = match settings.theme {
+            ThemePref::System => ThemePref::Light,
+            ThemePref::Light => ThemePref::Dark,
+            ThemePref::Dark => ThemePref::System,
+        };
+        self.apply_settings(settings);
+    }
+
     /// Applies the console palette to every window without rebuilding output or selection.
     pub(super) fn apply_console_theme(&self) {
         let mode = match self.settings.read().unwrap().console_theme {

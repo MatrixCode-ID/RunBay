@@ -38,6 +38,33 @@ pub(super) fn chrome_event(kind: Kind, event: Event) {
 }
 
 impl Controller {
+    /// Apply native policy only once the backend has actually created each HWND.
+    pub(super) fn bind_native_windows(&self) {
+        let ui = self.ui();
+        for window in [ui.window(), self.modes.compact.window()] {
+            super::native::on_created(window, |_| {
+                with_controller(|c| {
+                    c.apply_taskbar_buttons();
+                    c.restore_full_maximized();
+                });
+            });
+        }
+        for window in [self.modes.icon.window(), self.modes.popup.window()] {
+            super::native::on_created(window, platform::set_tool_window);
+        }
+    }
+
+    fn restore_full_maximized(&self) {
+        let ui = self.ui();
+        if ui.window().is_visible()
+            && convert::hwnd(ui.window()).is_some()
+            && self.state.borrow().full_maximized
+        {
+            self.state.borrow_mut().full_maximized = false;
+            ui.window().set_maximized(true);
+        }
+    }
+
     pub(super) fn sync_caption_metrics(&self, kind: Kind) {
         let full = self.ui();
         let (window, metrics) = match kind {
@@ -316,10 +343,7 @@ impl Controller {
         let ui = self.ui();
         let _ = ui.show();
         self.apply_taskbar_buttons();
-        if self.state.borrow().full_maximized {
-            ui.window().set_maximized(true);
-            self.state.borrow_mut().full_maximized = false;
-        }
+        self.restore_full_maximized();
         if let Some(hwnd) = convert::hwnd(ui.window()) {
             platform::bring_to_front(hwnd);
         }

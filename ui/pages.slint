@@ -1,8 +1,8 @@
 // Full-mode pages: the app editor, settings, the Action History flyout, and dialogs.
 
-import { LineEdit, TextEdit, ComboBox, Switch, CheckBox, ScrollView, ListView, AboutSlint } from "std-widgets.slint";
+import { LineEdit, TextEdit, ComboBox, CheckBox, ScrollView, ListView, AboutSlint } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton } from "components.slint";
+import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, ToggleSwitch } from "components.slint";
 
 export struct EnvRow {
     key: string,
@@ -781,14 +781,16 @@ export component SettingsPage inherits Rectangle {
                             }
                             SettingRow {
                                 label: "Always on top in Compact mode";
-                                Switch {
+                                ToggleSwitch {
+                                    accessible-label: "Always on top in Compact mode";
                                     checked <=> top-compact;
                                     toggled => { root.changed(); }
                                 }
                             }
                             SettingRow {
                                 label: "Always on top in Icon mode";
-                                Switch {
+                                ToggleSwitch {
+                                    accessible-label: "Always on top in Icon mode";
                                     checked <=> top-icon;
                                     toggled => { root.changed(); }
                                 }
@@ -796,7 +798,8 @@ export component SettingsPage inherits Rectangle {
                             SettingRow {
                                 label: "Taskbar icon in Full mode";
                                 hint: "When off, use the tray icon to open RunBay.";
-                                Switch {
+                                ToggleSwitch {
+                                    accessible-label: "Taskbar icon in Full mode";
                                     checked <=> taskbar-full;
                                     toggled => { root.changed(); }
                                 }
@@ -804,7 +807,8 @@ export component SettingsPage inherits Rectangle {
                             SettingRow {
                                 label: "Taskbar icon in Compact mode";
                                 hint: "When off, use the tray icon to open RunBay.";
-                                Switch {
+                                ToggleSwitch {
+                                    accessible-label: "Taskbar icon in Compact mode";
                                     checked <=> taskbar-compact;
                                     toggled => { root.changed(); }
                                 }
@@ -826,7 +830,8 @@ export component SettingsPage inherits Rectangle {
                             SettingRow {
                                 label: "Load with Windows";
                                 hint: "Starts RunBay at sign-in in the last mode and position.";
-                                Switch {
+                                ToggleSwitch {
+                                    accessible-label: "Load with Windows";
                                     checked <=> autostart;
                                     toggled => { root.changed(); }
                                 }
@@ -900,7 +905,8 @@ export component SettingsPage inherits Rectangle {
                             SettingRow {
                                 label: "Update automatically";
                                 hint: update-status;
-                                Switch {
+                                ToggleSwitch {
+                                    accessible-label: "Update automatically";
                                     checked <=> auto-update;
                                     toggled => { root.changed(); }
                                 }

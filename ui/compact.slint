@@ -250,14 +250,16 @@ export component CompactWindow inherits Window {
 
     title: "RunBay";
     icon: @image-url("logo/runbay-64.png");
-    preferred-width: 320px;
+    preferred-width: 360px;
     preferred-height: 420px;
-    min-width: 260px;
+    min-width: 360px;
     min-height: 200px;
     background: Theme.surface-container;
     in property <bool> pinned;
     always-on-top: pinned;
     callback toggle-pin();
+    in property <int> theme-mode;
+    callback cycle-theme();
 
     in property <bool> window-active: true;
     in property <bool> window-maximized;
@@ -305,6 +307,15 @@ export component CompactWindow inherits Window {
                 Tooltip {
                     Text { text: "Connected agents: " + MiniBridge.agents; }
                 }
+            }
+            SymbolButton {
+                icon: root.theme-mode == 1 ? Icons.light-mode : root.theme-mode == 2 ? Icons.dark-mode : Icons.system-theme;
+                tooltip: root.theme-mode == 1 ? "Theme: Light. Click for Dark."
+                    : root.theme-mode == 2 ? "Theme: Dark. Click for System."
+                    : "Theme: System (" + (Theme.dark ? "Dark" : "Light") + "). Click for Light.";
+                window-active: root.window-active;
+                size: 32px;
+                clicked => { root.cycle-theme(); }
             }
             SymbolButton {
                 icon: pinned ? Icons.pin-fill : Icons.pin;

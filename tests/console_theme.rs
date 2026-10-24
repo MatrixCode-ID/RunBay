@@ -108,7 +108,7 @@ fn console_palettes_render_independently_in_full_and_output_popups() {
 
     let compact = CompactWindow::new().unwrap();
     let compact_window = windows.borrow().last().unwrap().clone();
-    compact_window.set_size(PhysicalSize::new(320, 420));
+    compact_window.set_size(PhysicalSize::new(360, 420));
     let icon_popup = IconPopup::new().unwrap();
     let icon_window = windows.borrow().last().unwrap().clone();
     icon_window.set_size(PhysicalSize::new(320, 420));
@@ -134,7 +134,7 @@ fn console_palettes_render_independently_in_full_and_output_popups() {
     render(&compact_window, "compact-apps");
     render(&icon_window, "icon-apps");
     // The message action is in the app row, before the output popup is opened.
-    click(&compact_window, 287.0, 86.0);
+    click(&compact_window, 327.0, 86.0);
     click(&icon_window, 277.0, 58.0);
     for console_mode in [0, 1, 2] {
         for (window, theme, name) in [
@@ -159,7 +159,7 @@ fn console_palettes_render_independently_in_full_and_output_popups() {
         (
             &compact_window,
             compact.global::<OutputBridge>(),
-            289.0,
+            329.0,
             112.0,
         ),
         (

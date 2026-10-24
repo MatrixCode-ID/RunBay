@@ -8,6 +8,7 @@ mod history;
 mod lifecycle;
 mod mcp_setup;
 mod modes;
+mod native;
 mod output_selection;
 mod selection;
 mod settings;
@@ -127,6 +128,7 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
     controller.bind_settings();
     controller.bind_history();
     controller.bind_close();
+    controller.bind_native_windows();
     controller.bind_modes();
     controller.bind_selection();
     controller.bind_updates();
@@ -258,6 +260,7 @@ impl Controller {
             ThemePref::Dark => 2,
         };
         ui.set_theme_mode(mode);
+        self.modes.compact.set_theme_mode(mode);
         ui.global::<crate::SettingsBridge>().set_theme_index(mode);
         ui.invoke_set_theme(mode);
         self.modes.compact.invoke_set_theme(mode);
@@ -273,13 +276,7 @@ impl Controller {
             let c = c.clone();
             ui.on_cycle_theme(move || {
                 if let Some(c) = c() {
-                    let mut settings = c.settings.read().unwrap().clone();
-                    settings.theme = match settings.theme {
-                        ThemePref::System => ThemePref::Light,
-                        ThemePref::Light => ThemePref::Dark,
-                        ThemePref::Dark => ThemePref::System,
-                    };
-                    c.apply_settings(settings);
+                    c.cycle_theme();
                 }
             });
         }

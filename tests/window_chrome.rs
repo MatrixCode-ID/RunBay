@@ -3,7 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use runbay::{CompactWindow, MainWindow, MiniBridge};
+use runbay::{CompactWindow, MainWindow, MiniBridge, SettingsBridge};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Platform, PointerEventButton, WindowAdapter, WindowEvent};
 use slint::{ComponentHandle, LogicalPosition, PhysicalSize, Rgb8Pixel};
@@ -63,7 +63,7 @@ fn captions_render_in_both_themes_and_follow_layout_and_dpi() {
     full.show().unwrap();
     let compact = CompactWindow::new().unwrap();
     let compact_window = windows.borrow().last().unwrap().clone();
-    compact_window.set_size(PhysicalSize::new(320, 420));
+    compact_window.set_size(PhysicalSize::new(360, 420));
     compact.show().unwrap();
 
     for theme in [1, 2] {
@@ -135,8 +135,56 @@ fn captions_render_in_both_themes_and_follow_layout_and_dpi() {
         compact.get_drag_end() < drag_end,
         "agent indicator must stay outside the drag area"
     );
-    click(&compact_window, 320.0 - 8.0 - 32.0 - 2.0 - 16.0, 24.0);
-    click(&compact_window, 320.0 - 8.0 - 16.0, 24.0);
+    click(&compact_window, 360.0 - 8.0 - 32.0 - 2.0 - 16.0, 24.0);
+    click(&compact_window, 360.0 - 8.0 - 16.0, 24.0);
     assert_eq!(minimize.get(), 4);
     assert_eq!(close.get(), 4);
+
+    let themes = Rc::new(Cell::new(0));
+    let count = themes.clone();
+    compact.on_cycle_theme(move || count.set(count.get() + 1));
+    for theme in [0, 1, 2] {
+        compact.set_theme_mode(theme);
+        compact.invoke_set_theme(theme);
+        render(&compact_window, &format!("compact-theme-{theme}"));
+        // At minimum width, with an agent connected, every header control fits.
+        click(&compact_window, 360.0 - 8.0 - 5.0 * 34.0 - 16.0, 24.0);
+    }
+    assert_eq!(themes.get(), 3);
+
+    full_window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 1.0 });
+    full_window.set_size(PhysicalSize::new(1100, 900));
+    full.set_window_active(true);
+    full.set_max_hover(false);
+    full.set_max_pressed(false);
+    full_window.dispatch_event(WindowEvent::PointerExited);
+    full.set_page("settings".into());
+    let settings = full.global::<SettingsBridge>();
+    settings.set_top_compact(true);
+    settings.set_top_icon(false);
+    settings.set_taskbar_full(true);
+    settings.set_taskbar_compact(false);
+    for theme in [1, 2] {
+        full.invoke_set_theme(theme);
+        render(&full_window, &format!("settings-toggles-{theme}"));
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        slint::platform::update_timers_and_animations();
+        render(&full_window, &format!("settings-toggles-{theme}"));
+    }
+
+    let changes = Rc::new(Cell::new(0));
+    let count = changes.clone();
+    settings.on_changed(move || count.set(count.get() + 1));
+    click(&full_window, 238.0, 501.0);
+    assert!(
+        !settings.get_top_compact(),
+        "pointer toggles the saved binding"
+    );
+    full_window.dispatch_event(WindowEvent::KeyPressed { text: " ".into() });
+    full_window.dispatch_event(WindowEvent::KeyReleased { text: " ".into() });
+    assert!(
+        settings.get_top_compact(),
+        "Space toggles the focused switch"
+    );
+    assert_eq!(changes.get(), 2, "each toggle requests one automatic save");
 }

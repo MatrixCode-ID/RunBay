@@ -4,6 +4,71 @@ import { Theme, Icons } from "theme.slint";
 import { ListView } from "std-widgets.slint";
 import { OutputRow, ActionButton } from "types.slint";
 
+// M3 switch colors use the same roles as the rest of RunBay, independent of
+// the operating system accent. The selected thumb contrasts with its track.
+export component ToggleSwitch inherits Rectangle {
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled();
+    width: 52px;
+    height: 32px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 16px;
+    border-width: 2px;
+    border-color: checked ? Theme.primary : Theme.outline;
+    background: checked ? Theme.primary : Theme.surface-container-highest;
+    opacity: enabled ? 1 : 0.38;
+    forward-focus: keys;
+    accessible-role: switch;
+    accessible-enabled: enabled;
+    accessible-checkable: true;
+    accessible-checked: checked;
+    accessible-action-default => { root.toggle(); }
+
+    function toggle() {
+        if root.enabled {
+            root.checked = !root.checked;
+            root.toggled();
+        }
+    }
+
+    Rectangle {
+        width: touch.pressed ? 28px : root.checked ? 24px : 16px;
+        height: self.width;
+        x: root.checked ? parent.width - self.width - 4px : (32px - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: root.checked ? Theme.on-primary : Theme.outline;
+        Rectangle {
+            width: 40px;
+            height: 40px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: 20px;
+            background: (root.checked ? Theme.primary : Theme.on-surface).with-alpha(
+                touch.pressed || keys.has-focus ? 0.12 : touch.has-hover ? 0.08 : 0);
+        }
+        animate x, width, background { duration: Theme.motion-fast; }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { keys.focus(); root.toggle(); }
+    }
+    keys := FocusScope {
+        width: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.toggle();
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
+
 // One protocol for the Full output and the Compact/Icon output popups.
 export global OutputBridge {
     callback cycle-console-theme();

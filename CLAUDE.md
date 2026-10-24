@@ -192,6 +192,9 @@ RunBay will be published as open source under the **MIT license**.
 - Settings uses category navigation, a clear Back control, and an automatic-save
   explanation. The Full navigation header has an icon button cycling System,
   Light, and Dark themes. See specification §8.
+- Settings toggles use contrasting RunBay theme colors. Compact also offers the
+  application theme button and has a 360 px minimum width to fit its header
+  controls (user decision 2026-10-25). See specification §§6.2 and 12.
 - Console output has its own theme button and saved Light / Dark / Follow UI
   preference, shared by Full and Compact/Icon output views. Follow uses the
   selected UI theme. See specification §§5.3 and 8.
