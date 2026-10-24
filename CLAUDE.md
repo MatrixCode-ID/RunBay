@@ -63,9 +63,9 @@ RunBay will be published as open source under the **MIT license**.
 - New dependencies must have an MIT-compatible license (MIT, Apache-2.0, BSD,
   ISC, Zlib, and similar). Slint is used under its royalty-free license, which
   requires the "Made with Slint" attribution in the About dialog; do not remove it.
-  UI icons use **Font Awesome Free** (latest 7.x, pinned; fonts SIL OFL 1.1, icons
-  CC BY 4.0): keep its attribution in the About dialog and its license texts in
-  `THIRD-PARTY-NOTICES.md`, and never add Font Awesome Pro icons.
+  UI icons use **Material Symbols Rounded** (Apache-2.0) as SVG files of only the
+  icons in use; keep its license text in `THIRD-PARTY-NOTICES.md`. Do not add
+  other icon sets.
   Ask the user before adding a dependency under any other license.
 - New source files do not need per-file license headers; the root `LICENSE` file
   covers the repository.
