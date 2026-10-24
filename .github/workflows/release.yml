@@ -5,6 +5,7 @@ name: Release
 # creates the GitHub Release. A push without a release note change does not start this workflow, and
 # without an untagged release note nothing is published (user decision 2026-10-24, as in em-system).
 # Tags pushed by this workflow use GITHUB_TOKEN, so they do not trigger another run.
+# The release build runs in parallel with CI; only publishing waits for both.
 on:
   push:
     branches: [main]
@@ -86,18 +87,21 @@ jobs:
     if: needs.validate.outputs.version != ''
     uses: ./.github/workflows/ci.yml
 
-  release:
-    needs: [validate, ci]
+  build:
+    needs: validate
     if: needs.validate.outputs.version != ''
     runs-on: windows-latest
-    permissions:
-      contents: write
     env:
       VERSION: ${{ needs.validate.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
+
+      # Restored before the version is set; a changed Cargo.lock falls back to the previous cache.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
 
       # The release note is the source of the version; Cargo.toml is aligned in the build only.
       - name: Set package version
@@ -129,6 +133,22 @@ jobs:
           name: RunBay-${{ env.VERSION }}
           path: release-assets/*
           if-no-files-found: error
+
+  publish:
+    needs: [validate, ci, build]
+    if: needs.validate.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: RunBay-${{ env.VERSION }}
+          path: release-assets
 
       - name: Tag and publish GitHub Release
         shell: pwsh

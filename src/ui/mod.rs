@@ -103,6 +103,7 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
         popup_timer: RefCell::new(None),
         update: RefCell::new(updates::UpdateUi::default()),
         update_timer: RefCell::new(None),
+        clock_timer: RefCell::new(None),
         restart_args: if options.custom_data_dir {
             vec![
                 "--data-dir".to_string(),
@@ -236,6 +237,8 @@ struct Controller {
     popup_timer: RefCell<Option<Rc<slint::Timer>>>,
     update: RefCell<updates::UpdateUi>,
     update_timer: RefCell<Option<Rc<slint::Timer>>>,
+    /// Advances `Clock.now` once a second while runs are active; `None` while idle.
+    clock_timer: RefCell<Option<slint::Timer>>,
     /// Arguments passed again when RunBay restarts itself.
     restart_args: Vec<String>,
 }
@@ -748,11 +751,46 @@ impl Controller {
         self.manager.find(&id)
     }
 
+    /// Sets `Clock.now` in every window, and keeps it ticking only while runs are active so
+    /// an idle RunBay neither polls nor redraws.
+    fn sync_clock(&self) {
+        let set_clock = {
+            let full = self.window.clone();
+            let compact = self.modes.compact.as_weak();
+            let popup = self.modes.popup.as_weak();
+            move || {
+                let now = convert::clock_now();
+                if let Some(w) = full.upgrade() {
+                    w.global::<crate::Clock>().set_now(now);
+                }
+                if let Some(w) = compact.upgrade() {
+                    w.global::<crate::Clock>().set_now(now);
+                }
+                if let Some(w) = popup.upgrade() {
+                    w.global::<crate::Clock>().set_now(now);
+                }
+            }
+        };
+        set_clock();
+        let mut timer = self.clock_timer.borrow_mut();
+        if self.manager.active().is_empty() {
+            *timer = None;
+        } else if timer.is_none() {
+            let t = slint::Timer::default();
+            t.start(
+                slint::TimerMode::Repeated,
+                std::time::Duration::from_secs(1),
+                set_clock,
+            );
+            *timer = Some(t);
+        }
+    }
+
     /// Updates the output header and the tab strip.
     fn refresh_header(&self) {
         let ui = self.ui();
         let displayed = self.state.borrow().displayed.clone();
-        let (title, status, agent, has_log) = match self.displayed_run() {
+        let (title, status, agent, has_log, duration, started) = match self.displayed_run() {
             Some(run) => {
                 let info = run.info();
                 (
@@ -760,6 +798,8 @@ impl Controller {
                     info.status.as_str().to_string(),
                     info.agent.clone().unwrap_or_default(),
                     info.log_path.as_ref().is_some_and(|p| p.exists()),
+                    convert::final_duration(&info.start, info.end.as_ref()),
+                    convert::clock_seconds(&info.start),
                 )
             }
             None => match displayed.as_deref().and_then(|id| self.find_record(id)) {
@@ -772,12 +812,16 @@ impl Controller {
                         record.status.as_str().to_string(),
                         record.agent.clone().unwrap_or_default(),
                         path.exists(),
+                        convert::final_duration(&record.start, record.end.as_ref()),
+                        convert::clock_seconds(&record.start),
                     )
                 }
-                None => (String::new(), String::new(), String::new(), false),
+                None => Default::default(),
             },
         };
         ui.set_output_title(title.into());
+        ui.set_output_duration(duration.into());
+        ui.set_output_started(started);
         ui.set_output_status(status.into());
         ui.set_output_busy(self.displayed_run().is_some_and(|run| run.info().is_busy()));
         ui.set_output_agent(agent.into());
@@ -884,6 +928,7 @@ impl Controller {
         let model = ModelRc::new(VecModel::from(rows));
         self.ui().set_apps(model.clone());
         self.each_mini(|g| g.set_apps(model.clone()));
+        self.sync_clock();
         let agent_running = self
             .manager
             .active()

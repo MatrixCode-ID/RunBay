@@ -3,7 +3,7 @@
 import { ListView, LineEdit, TextEdit, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
 import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, TooltipContent, OutputView, ConsoleThemeButton } from "components.slint";
-import { Span, OutputRow, ActionButton, RunRow, AppRow } from "types.slint";
+import { Span, OutputRow, ActionButton, RunRow, AppRow, Clock } from "types.slint";
 import { EditorPage, SettingsPage, HistoryFlyout, AboutDialog } from "pages.slint";
 
 component MenuItem inherits Rectangle {
@@ -150,7 +150,8 @@ component AppCard inherits Rectangle {
                     horizontal-stretch: 1;
                 }
                 Text {
-                    text: run.time;
+                    property <string> elapsed: Clock.duration(run.status, run.started, run.duration);
+                    text: elapsed == "" ? run.time : run.time + " · " + elapsed;
                     color: Theme.on-surface-variant;
                     font-size: Theme.label-small;
                     vertical-alignment: center;
@@ -222,6 +223,9 @@ export component MainWindow inherits Window {
     in property <[OutputRow]> output;
     in property <int> output-columns;
     in property <string> output-title;
+    // Final duration of the displayed run, and its start in Clock seconds.
+    in property <string> output-duration;
+    in property <int> output-started;
     in property <string> output-status;
     in property <bool> output-busy;
     in property <string> output-agent;
@@ -482,7 +486,8 @@ export component MainWindow inherits Window {
                             y: (parent.height - self.height) / 2;
                         }
                         Text {
-                            text: tab.title;
+                            property <string> elapsed: Clock.duration(tab.status, tab.started, tab.duration);
+                            text: elapsed == "" ? tab.title : tab.title + " · " + elapsed;
                             font-size: Theme.label-medium;
                             color: tab.selected ? Theme.on-secondary-container : Theme.on-surface-variant;
                             vertical-alignment: center;
@@ -515,6 +520,12 @@ export component MainWindow inherits Window {
                     busy: output-busy;
                     agent: output-agent != "";
                     y: (parent.height - self.height) / 2;
+                }
+                if Clock.duration(output-status, output-started, output-duration) != "": Text {
+                    text: Clock.duration(output-status, output-started, output-duration);
+                    font-size: Theme.label-large;
+                    color: Theme.on-surface-variant;
+                    vertical-alignment: center;
                 }
                 if output-agent != "": AgentChip {
                     agent: output-agent;

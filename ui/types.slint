@@ -45,7 +45,33 @@ export struct RunRow {
     busy: bool,
     agent: string,
     time: string,
+    // Final duration of a finished run; empty while running.
+    duration: string,
+    // Start in Clock seconds, for the live elapsed time while running.
+    started: int,
     selected: bool,
+}
+
+// Seconds since RunBay started, advanced once a second only while runs are active, so
+// running rows show a live elapsed time without rebuilding their models.
+export global Clock {
+    in-out property <int> now;
+
+    // `12 s`, `4 min 05 s`, `1 h 02 min`.
+    public pure function elapsed(seconds: int) -> string {
+        if (seconds < 60) {
+            return max(0, seconds) + " s";
+        }
+        if (seconds < 3600) {
+            return floor(seconds / 60) + " min " + (mod(seconds, 60) < 10 ? "0" : "") + mod(seconds, 60) + " s";
+        }
+        return floor(seconds / 3600) + " h " + (mod(floor(seconds / 60), 60) < 10 ? "0" : "") + mod(floor(seconds / 60), 60) + " min";
+    }
+
+    // Live elapsed time while running, otherwise the final duration.
+    public pure function duration(status: string, started: int, final: string) -> string {
+        return status == "running" ? elapsed(Clock.now - started) : final;
+    }
 }
 
 // An app card in the navigation.

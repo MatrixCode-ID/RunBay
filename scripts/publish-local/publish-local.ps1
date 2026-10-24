@@ -1,5 +1,6 @@
 # Builds the release executable and publishes it to the local artifact folder
 # ../.artefacts/RunBay/dist (relative to the repository root), with SHA256SUMS.
+# The executable gets the version of the release note candidate being prepared.
 #
 # Usage: scripts\publish-local.cmd [-SkipTests]
 #    or: pwsh -File scripts/publish-local/publish-local.ps1 [-SkipTests]
@@ -32,6 +33,37 @@ function Import-MsvcEnvironment {
     }
 }
 
+# The version of the single release note candidate, so local builds carry the version
+# being prepared; $null (keep Cargo.toml) when there is no single valid candidate.
+function Get-CandidateVersion {
+    $notes = @(Get-ChildItem (Join-Path $repo 'doc\ReleaseNote-Candidate') -Filter '*.md' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.BaseName -match '^\d+\.\d+\.\d+(-(alpha|beta)\.\d+)?$' })
+    if ($notes.Count -eq 1) { return $notes[0].BaseName }
+    Write-Warning "Expected one release note candidate, found $($notes.Count); keeping the Cargo.toml version."
+    return $null
+}
+
+# Runs the release build with the package version set to $Version. Cargo.toml and
+# Cargo.lock are restored byte for byte afterwards, as CI only aligns them in its build.
+function Invoke-ReleaseBuild([string] $Version) {
+    $manifest = Join-Path $repo 'Cargo.toml'
+    $lock = Join-Path $repo 'Cargo.lock'
+    $savedManifest = [System.IO.File]::ReadAllBytes($manifest)
+    $savedLock = [System.IO.File]::ReadAllBytes($lock)
+    try {
+        if ($Version) {
+            $text = [System.IO.File]::ReadAllText($manifest)
+            $updated = [regex]::new('(?m)^(version\s*=\s*)"[^"]*"').Replace($text, "`${1}`"$Version`"", 1)
+            [System.IO.File]::WriteAllText($manifest, $updated, [System.Text.UTF8Encoding]::new($false))
+        }
+        Invoke-Cargo @('build', '--release')
+    }
+    finally {
+        [System.IO.File]::WriteAllBytes($manifest, $savedManifest)
+        [System.IO.File]::WriteAllBytes($lock, $savedLock)
+    }
+}
+
 # Arguments are passed as an array: PowerShell would swallow a bare `--` given to a
 # function as separate arguments.
 function Invoke-Cargo([string[]] $Arguments) {
@@ -49,7 +81,7 @@ try {
         Invoke-Cargo @('clippy', '--all-targets', '--', '-D', 'warnings')
         Invoke-Cargo @('test')
     }
-    Invoke-Cargo @('build', '--release')
+    Invoke-ReleaseBuild (Get-CandidateVersion)
 
     New-Item -ItemType Directory -Force $dist | Out-Null
     $exe = Join-Path $dist 'RunBay.exe'

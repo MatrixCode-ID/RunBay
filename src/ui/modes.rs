@@ -321,14 +321,16 @@ impl Controller {
             .as_deref()
             .and_then(|id| self.manager.find(id))
             .is_some_and(|run| run.info().is_busy());
-        let (title, status, agent) = match run_id.as_deref() {
+        let (title, status, agent, duration, started) = match run_id.as_deref() {
             Some(id) => match self.manager.find(id) {
                 Some(run) => {
                     let i = run.info();
                     (
                         format!("{} · {}", i.app_name, i.action_name),
                         i.status.as_str().to_string(),
-                        i.agent.unwrap_or_default(),
+                        i.agent.clone().unwrap_or_default(),
+                        convert::final_duration(&i.start, i.end.as_ref()),
+                        convert::clock_seconds(&i.start),
                     )
                 }
                 None => match self.find_record(id) {
@@ -339,7 +341,9 @@ impl Controller {
                             r.action_id
                         ),
                         r.status.as_str().to_string(),
-                        r.agent.unwrap_or_default(),
+                        r.agent.clone().unwrap_or_default(),
+                        convert::final_duration(&r.start, r.end.as_ref()),
+                        convert::clock_seconds(&r.start),
                     ),
                     None => Default::default(),
                 },
@@ -351,6 +355,8 @@ impl Controller {
             g.set_output(output.clone());
             g.set_output_title(title.clone().into());
             g.set_output_status(status.clone().into());
+            g.set_output_duration(duration.clone().into());
+            g.set_output_started(started);
             g.set_output_busy(busy);
             g.set_output_agent(agent.clone().into());
             g.set_output_run_id(run_id.clone().unwrap_or_default().into());

@@ -1,6 +1,6 @@
 //! Conversions from runner and data types to the Slint models.
 
-use chrono::{DateTime, FixedOffset, Local};
+use chrono::{DateTime, FixedOffset, Local, TimeZone, Utc};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::{ModelRc, VecModel};
 
@@ -88,6 +88,31 @@ pub fn duration_label(d: chrono::Duration) -> String {
     }
 }
 
+/// The moment `Clock.now` counts from: the first time a clock value is needed.
+fn clock_base() -> DateTime<Utc> {
+    static BASE: std::sync::OnceLock<DateTime<Utc>> = std::sync::OnceLock::new();
+    *BASE.get_or_init(Utc::now)
+}
+
+/// `t` in `Clock` seconds; earlier runs are negative.
+pub fn clock_seconds<Tz: TimeZone>(t: &DateTime<Tz>) -> i32 {
+    (t.with_timezone(&Utc) - clock_base()).num_seconds() as i32
+}
+
+/// The current `Clock.now` value.
+pub fn clock_now() -> i32 {
+    clock_seconds(&Utc::now())
+}
+
+/// Final duration label of a finished run; empty while running or when the end is unknown.
+pub fn final_duration(
+    start: &DateTime<FixedOffset>,
+    end: Option<&DateTime<FixedOffset>>,
+) -> String {
+    end.map(|end| duration_label(*end - *start))
+        .unwrap_or_default()
+}
+
 /// A run row for the navigation (`tab == false`) or the tab strip.
 pub fn run_row(info: &RunInfo, displayed: Option<&str>, tab: bool) -> RunRow {
     RunRow {
@@ -102,6 +127,8 @@ pub fn run_row(info: &RunInfo, displayed: Option<&str>, tab: bool) -> RunRow {
         busy: info.is_busy(),
         agent: info.agent.clone().unwrap_or_default().into(),
         time: time_label(&info.start).into(),
+        duration: final_duration(&info.start, info.end.as_ref()).into(),
+        started: clock_seconds(&info.start),
         selected: displayed == Some(info.run_id.as_str()),
     }
 }
@@ -115,6 +142,8 @@ pub fn record_row(record: &RunRecord, action_name: &str, displayed: Option<&str>
         busy: false,
         agent: record.agent.clone().unwrap_or_default().into(),
         time: time_label(&record.start).into(),
+        duration: final_duration(&record.start, record.end.as_ref()).into(),
+        started: clock_seconds(&record.start),
         selected: displayed == Some(record.run_id.as_str()),
     }
 }

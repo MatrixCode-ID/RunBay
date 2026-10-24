@@ -3,7 +3,7 @@
 import { ListView, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
 import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, OutputView, OutputBridge, ConsoleThemeButton } from "components.slint";
-import { Span, OutputRow, ActionButton, RunRow, AppRow } from "types.slint";
+import { Span, OutputRow, ActionButton, RunRow, AppRow, Clock } from "types.slint";
 
 // Data and callbacks shared by the Compact window and the Icon popup.
 export global MiniBridge {
@@ -12,6 +12,8 @@ export global MiniBridge {
     in-out property <int> output-columns;
     in-out property <string> output-title;
     in-out property <string> output-status;
+    in-out property <string> output-duration;
+    in-out property <int> output-started;
     in-out property <bool> output-busy;
     in-out property <string> output-agent;
     in-out property <string> output-run-id;
@@ -49,6 +51,12 @@ component OutputCard inherits Rectangle {
                 vertical-alignment: center;
                 overflow: elide;
                 horizontal-stretch: 1;
+            }
+            if Clock.duration(MiniBridge.output-status, MiniBridge.output-started, MiniBridge.output-duration) != "": Text {
+                text: Clock.duration(MiniBridge.output-status, MiniBridge.output-started, MiniBridge.output-duration);
+                color: Theme.on-surface-variant;
+                font-size: Theme.label-medium;
+                vertical-alignment: center;
             }
             StatusBadge {
                 status: MiniBridge.output-status;

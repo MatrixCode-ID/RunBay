@@ -281,6 +281,12 @@ Different apps may always run in parallel.
   immediately for existing and new output, preserving selection and scrolling.
   Extended palette entries (16–255) and RGB colors retain their original values.
 
+- **Elapsed time**: run rows below an app (Full), run tabs, the Output panel
+  header, and the Compact/Icon output popup header show how long a run has taken.
+  A running run counts up live (`12 s`, `4 min 05 s`, `1 h 02 min`); a finished
+  run shows its final duration. The live value advances once a second only while
+  at least one run is active, so an idle RunBay neither polls nor redraws.
+
 ### 5.4 Status badges
 
 Each active Build or Custom action shows a spinner. An active Run action shows
