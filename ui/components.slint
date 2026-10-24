@@ -264,12 +264,113 @@ export component StatusBadge inherits Rectangle {
 
 // An icon button with an M3 state layer. `style`: "standard", "tonal", "filled", "tertiary".
 // The shape morphs from a circle to a rounded square while pressed (M3 Expressive).
+// Native caption hit testing supplies hover/press for the Full maximize button.
+export component CaptionButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> danger;
+    in property <bool> window-active: true;
+    in property <bool> native-input;
+    in property <bool> hover;
+    in property <bool> pressed;
+    callback clicked();
+    width: 46px;
+    height: 36px;
+    horizontal-stretch: 0;
+    property <bool> highlighted: hover || touch.has-hover;
+    background: danger && highlighted ? Theme.error
+        : (pressed || touch.pressed) ? Theme.on-surface.with-alpha(0.12)
+        : highlighted ? Theme.on-surface.with-alpha(0.08) : transparent;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: keys;
+    Image {
+        source: root.icon;
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        colorize: root.danger && root.highlighted ? Theme.on-error : Theme.on-surface-variant;
+        opacity: root.window-active || root.highlighted ? 1 : 0.55;
+    }
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == " " || event.text == Key.Return { root.clicked(); return accept; }
+            return reject;
+        }
+    }
+    touch := TouchArea {
+        enabled: !root.native-input;
+        clicked => { keys.focus(); root.clicked(); }
+    }
+}
+
+export component TitleBar inherits Rectangle {
+    in property <bool> window-active: true;
+    in property <bool> maximized;
+    in property <bool> max-hover;
+    in property <bool> max-pressed;
+    out property <length> drag-end: self.width - 138px;
+    out property <length> max-button-x: self.width - 92px;
+    callback minimize();
+    callback maximize();
+    callback close();
+    height: 36px;
+    background: Theme.surface-container;
+    HorizontalLayout {
+        spacing: 0px;
+        Rectangle {
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                padding-left: 12px;
+                spacing: 8px;
+                Image {
+                    source: Icons.logo;
+                    width: 18px;
+                    height: 18px;
+                    y: (parent.height - self.height) / 2;
+                    opacity: root.window-active ? 1 : 0.55;
+                }
+                Text {
+                    text: "RunBay";
+                    color: Theme.on-surface-variant;
+                    opacity: root.window-active ? 1 : 0.55;
+                    font-size: Theme.label-medium;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+            }
+        }
+        CaptionButton {
+            icon: Icons.minimize; label: "Minimize";
+            window-active: root.window-active;
+            clicked => { root.minimize(); }
+        }
+        CaptionButton {
+            icon: root.maximized ? Icons.restore : Icons.maximize;
+            label: root.maximized ? "Restore" : "Maximize";
+            window-active: root.window-active;
+            native-input: true;
+            hover: root.max-hover; pressed: root.max-pressed;
+            clicked => { root.maximize(); }
+        }
+        CaptionButton {
+            icon: Icons.close; label: "Close"; danger: true;
+            window-active: root.window-active;
+            clicked => { root.close(); }
+        }
+    }
+}
+
 export component SymbolButton inherits Rectangle {
     in property <image> icon;
     in property <string> label;
     in property <string> tooltip;
     in property <string> style: "standard";
     in property <bool> enabled: true;
+    in property <bool> danger;
+    in property <bool> window-active: true;
     in property <bool> active;
     in property <bool> agent;
     in property <string> status;
@@ -278,7 +379,7 @@ export component SymbolButton inherits Rectangle {
     in property <length> icon-size: 20px;
     // False for full-color images such as custom action icons.
     in property <bool> colorize-icon: true;
-    in property <brush> icon-color: style == "filled" ? Theme.on-primary
+    in property <brush> icon-color: danger && touch.has-hover ? Theme.on-error : style == "filled" ? Theme.on-primary
         : style == "tertiary" ? Theme.on-tertiary
         : style == "tonal" ? Theme.on-secondary-container
         : Theme.on-surface-variant;
@@ -293,11 +394,12 @@ export component SymbolButton inherits Rectangle {
     height: size;
     border-radius: pressed ? Theme.corner-small : self.height / 2;
     background: !enabled ? transparent
+        : danger && touch.has-hover ? Theme.error
         : style == "filled" ? Theme.primary
         : style == "tertiary" ? Theme.tertiary
         : style == "tonal" ? Theme.secondary-container
         : transparent;
-    opacity: enabled ? 1 : 0.38;
+    opacity: !enabled ? 0.38 : window-active || touch.has-hover ? 1 : 0.55;
     animate border-radius { duration: Theme.motion-fast; easing: ease-out; }
 
     accessible-role: button;

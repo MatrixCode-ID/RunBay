@@ -7,9 +7,83 @@ use slint::{ComponentHandle, PhysicalPosition, PhysicalSize};
 
 use super::{Controller, convert, with_controller};
 use crate::data::{LoadedApp, Mode, WindowRect};
+use crate::platform::chrome::{self, Event, Kind, Metrics};
 use crate::platform::{self, monitors, tray::Tray, tray::TrayCommand};
 
+// Win32 may call back while Slint/winit is already borrowing its window adapter.
+// Defer every UI access until that native message has returned.
+pub(super) fn chrome_event(kind: Kind, event: Event) {
+    let _ = slint::invoke_from_event_loop(move || {
+        with_controller(|c| match event {
+            Event::Minimize => c.caption_minimize(kind),
+            Event::MetricsChanged => c.sync_caption_metrics(kind),
+            Event::Appearance(a) => match kind {
+                Kind::Full => {
+                    let ui = c.ui();
+                    ui.set_window_active(a.active);
+                    ui.set_window_maximized(a.maximized);
+                    ui.set_max_hover(a.hover);
+                    ui.set_max_pressed(a.pressed);
+                }
+                Kind::Compact => {
+                    let ui = &c.modes.compact;
+                    ui.set_window_active(a.active);
+                    ui.set_window_maximized(a.maximized);
+                    ui.set_max_hover(a.hover);
+                    ui.set_max_pressed(a.pressed);
+                }
+            },
+        })
+    });
+}
+
 impl Controller {
+    pub(super) fn sync_caption_metrics(&self, kind: Kind) {
+        let full = self.ui();
+        let (window, metrics) = match kind {
+            Kind::Full => (
+                full.window(),
+                Metrics {
+                    height: full.get_caption_height(),
+                    drag_end: full.get_drag_end(),
+                    max_x: full.get_max_button_x(),
+                    max_width: full.get_max_button_width(),
+                },
+            ),
+            Kind::Compact => {
+                let compact = &self.modes.compact;
+                (
+                    compact.window(),
+                    Metrics {
+                        height: compact.get_caption_height(),
+                        drag_end: compact.get_drag_end(),
+                        ..Default::default()
+                    },
+                )
+            }
+        };
+        if let Some(hwnd) = convert::hwnd(window) {
+            chrome::set_metrics(hwnd, metrics, window.scale_factor());
+        }
+    }
+
+    pub(super) fn caption_minimize(&self, kind: Kind) {
+        let ui = self.ui();
+        let settings = self.settings.read().unwrap();
+        let (window, visible) = match kind {
+            Kind::Full => (ui.window(), settings.taskbar_full),
+            Kind::Compact => (self.modes.compact.window(), settings.taskbar_compact),
+        };
+        if let Some(hwnd) = convert::hwnd(window) {
+            chrome::minimize(hwnd, visible);
+        }
+    }
+
+    pub(super) fn install_full_chrome(&self, hwnd: isize) {
+        chrome::install(hwnd, Kind::Full, |event| chrome_event(Kind::Full, event));
+        self.sync_caption_metrics(Kind::Full);
+    }
+
     /// Creates the tray icon.
     pub(super) fn create_tray(&self) {
         let tray = Tray::new(|command| {
@@ -151,6 +225,34 @@ impl Controller {
 
     /// Hides the Full window to the tray instead of closing it.
     pub(super) fn bind_close(self: &Rc<Self>) {
+        let weak = Rc::downgrade(self);
+        self.ui().on_caption_minimize(move || {
+            if let Some(c) = weak.upgrade() {
+                c.caption_minimize(Kind::Full);
+            }
+        });
+        let ui = self.ui().as_weak();
+        self.ui().on_caption_close(move || {
+            if let Some(ui) = ui.upgrade()
+                && let Some(hwnd) = convert::hwnd(ui.window())
+            {
+                chrome::close(hwnd);
+            }
+        });
+        let ui = self.ui().as_weak();
+        self.ui().on_caption_maximize(move || {
+            if let Some(ui) = ui.upgrade()
+                && let Some(hwnd) = convert::hwnd(ui.window())
+            {
+                chrome::toggle_maximize(hwnd);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.ui().on_caption_metrics_changed(move || {
+            if let Some(c) = weak.upgrade() {
+                c.sync_caption_metrics(Kind::Full);
+            }
+        });
         let weak = Rc::downgrade(self);
         self.ui().window().on_close_requested(move || {
             if let Some(c) = weak.upgrade() {

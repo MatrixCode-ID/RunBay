@@ -2,8 +2,10 @@
 //! pickers, autostart, monitors, and the tray.
 
 pub mod autostart;
+pub mod chrome;
 pub mod dialogs;
 pub mod monitors;
+mod owner;
 pub mod tray;
 
 use std::path::Path;
@@ -79,24 +81,31 @@ pub fn set_tool_window(hwnd: isize) {
     }
 }
 
-/// Shows or hides the taskbar button of a Full or Compact window. A visible window is
-/// hidden and shown again without activation, because the taskbar only reads the
-/// extended style when a window appears.
+/// Shows or hides a Full/Compact taskbar button using a never-visible owner, keeping
+/// the regular frame and window-manager eligibility. Refreshes without activation.
 pub fn set_taskbar_button(hwnd: isize, visible: bool) {
     use windows::Win32::UI::WindowsAndMessaging::{
-        GWL_EXSTYLE, GetWindowLongPtrW, IsWindowVisible, SW_HIDE, SW_SHOWNA, SetWindowLongPtrW,
-        WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        GWL_EXSTYLE, GWLP_HWNDPARENT, GetWindowLongPtrW, IsWindowVisible, SW_HIDE, SW_SHOWNA,
+        SetWindowLongPtrW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
     };
     let hwnd = HWND(hwnd as *mut _);
+    let owner = if visible {
+        0
+    } else {
+        let Some(owner) = owner::hidden_owner() else {
+            return;
+        };
+        owner
+    };
     // SAFETY: plain style change on a window owned by this process.
     unsafe {
         let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         let new = if visible {
             (style | WS_EX_APPWINDOW.0 as isize) & !(WS_EX_TOOLWINDOW.0 as isize)
         } else {
-            (style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize)
+            style & !((WS_EX_TOOLWINDOW.0 | WS_EX_APPWINDOW.0) as isize)
         };
-        if new == style {
+        if new == style && GetWindowLongPtrW(hwnd, GWLP_HWNDPARENT) == owner {
             return;
         }
         let shown = IsWindowVisible(hwnd).as_bool();
@@ -104,6 +113,7 @@ pub fn set_taskbar_button(hwnd: isize, visible: bool) {
             let _ = ShowWindow(hwnd, SW_HIDE);
         }
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new);
+        SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, owner);
         if shown {
             let _ = ShowWindow(hwnd, SW_SHOWNA);
         }

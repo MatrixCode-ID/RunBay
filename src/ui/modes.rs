@@ -9,6 +9,7 @@ use slint::{ComponentHandle, ModelRc, PhysicalPosition, PhysicalSize, SharedStri
 use super::{Controller, convert, with_controller};
 use crate::ansi::AnsiParser;
 use crate::data::{IconSize, Mode, WindowRect, WindowState};
+use crate::platform::chrome::{self, Kind};
 use crate::platform::{self, monitors};
 use crate::runner::{OutputLine, RunRequest};
 use crate::{CompactWindow, IconPopup, IconWindow, MiniBridge, OutputRow};
@@ -205,11 +206,23 @@ impl Controller {
     pub(super) fn apply_taskbar_buttons(&self) {
         let s = self.settings.read().unwrap();
         let ui = self.ui();
-        for (window, visible) in [
-            (ui.window(), s.taskbar_full),
-            (self.modes.compact.window(), s.taskbar_compact),
+        for (window, visible, kind) in [
+            (ui.window(), s.taskbar_full, Kind::Full),
+            (
+                self.modes.compact.window(),
+                s.taskbar_compact,
+                Kind::Compact,
+            ),
         ] {
             if let Some(hwnd) = convert::hwnd(window) {
+                if kind == Kind::Full {
+                    self.install_full_chrome(hwnd);
+                } else {
+                    chrome::install(hwnd, Kind::Compact, |event| {
+                        super::lifecycle::chrome_event(Kind::Compact, event);
+                    });
+                    self.sync_caption_metrics(Kind::Compact);
+                }
                 platform::set_taskbar_button(hwnd, visible);
             }
         }
@@ -431,6 +444,26 @@ impl Controller {
     }
 
     pub(super) fn bind_modes(self: &Rc<Self>) {
+        let weak = Rc::downgrade(self);
+        self.modes.compact.on_caption_minimize(move || {
+            if let Some(c) = weak.upgrade() {
+                c.caption_minimize(Kind::Compact);
+            }
+        });
+        let ui = self.modes.compact.as_weak();
+        self.modes.compact.on_caption_close(move || {
+            if let Some(ui) = ui.upgrade()
+                && let Some(hwnd) = convert::hwnd(ui.window())
+            {
+                chrome::close(hwnd);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.modes.compact.on_caption_metrics_changed(move || {
+            if let Some(c) = weak.upgrade() {
+                c.sync_caption_metrics(Kind::Compact);
+            }
+        });
         let weak = Rc::downgrade(self);
         self.ui().on_switch_mode(move |mode| {
             if let Some(c) = weak.upgrade() {

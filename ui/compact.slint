@@ -259,8 +259,20 @@ export component CompactWindow inherits Window {
     always-on-top: pinned;
     callback toggle-pin();
 
+    in property <bool> window-active: true;
+    in property <bool> window-maximized;
+    in property <bool> max-hover;
+    in property <bool> max-pressed;
+    out property <length> caption-height: header.height;
+    out property <length> drag-end: controls.x;
+    callback caption-minimize();
+    callback caption-close();
+    callback caption-metrics-changed();
+    changed caption-height => { root.caption-metrics-changed(); }
+    changed drag-end => { root.caption-metrics-changed(); }
+
     VerticalLayout {
-        HorizontalLayout {
+        header := HorizontalLayout {
             padding: 8px;
             spacing: 2px;
             Image {
@@ -268,25 +280,36 @@ export component CompactWindow inherits Window {
                 width: 22px;
                 height: 22px;
                 y: (parent.height - self.height) / 2;
+                opacity: root.window-active ? 1 : 0.55;
             }
             Text {
                 text: "RunBay";
-                color: Theme.on-surface;
+                color: Theme.on-surface-variant;
+                opacity: root.window-active ? 1 : 0.55;
                 font-weight: 600;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
             }
-            if MiniBridge.agents != "": Image {
+            controls := HorizontalLayout {
+            spacing: 2px;
+            if MiniBridge.agents != "": Rectangle {
+                width: 18px;
+                Image {
                 source: Icons.agent;
                 width: 18px;
                 colorize: Theme.tertiary;
                 y: (parent.height - self.height) / 2;
+                }
                 accessible-role: text;
                 accessible-label: "Connected agents: " + MiniBridge.agents;
+                Tooltip {
+                    Text { text: "Connected agents: " + MiniBridge.agents; }
+                }
             }
             SymbolButton {
                 icon: pinned ? Icons.pin-fill : Icons.pin;
                 tooltip: pinned ? "Always on top: on" : "Always on top: off";
+                window-active: root.window-active;
                 style: pinned ? "tonal" : "standard";
                 size: 32px;
                 clicked => { root.toggle-pin(); }
@@ -294,14 +317,32 @@ export component CompactWindow inherits Window {
             SymbolButton {
                 icon: Icons.bubble;
                 tooltip: "Icon mode";
+                window-active: root.window-active;
                 size: 32px;
                 clicked => { MiniBridge.switch-mode("icon"); }
             }
             SymbolButton {
                 icon: Icons.full;
                 tooltip: "Full mode";
+                window-active: root.window-active;
                 size: 32px;
                 clicked => { MiniBridge.switch-mode("full"); }
+            }
+            SymbolButton {
+                icon: Icons.minimize;
+                tooltip: "Minimize";
+                size: 32px;
+                window-active: root.window-active;
+                clicked => { root.caption-minimize(); }
+            }
+            SymbolButton {
+                icon: Icons.close;
+                tooltip: "Close";
+                danger: true;
+                size: 32px;
+                window-active: root.window-active;
+                clicked => { root.caption-close(); }
+            }
             }
         }
         AppList {

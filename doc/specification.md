@@ -321,7 +321,12 @@ moved to the nearest monitor.
 
 ### 6.1 Full
 
-A regular, resizable window.
+A regular, resizable window with a 36 px Slint title bar above the three-panel
+layout. The bar shows an 18 px logo and RunBay at the left, and Minimize,
+Maximize/Restore, and Close at the right. Empty space, the logo, and the title
+are native drag targets. Double-click toggles maximize; the maximize button
+supports the Windows 11 Snap Layouts flyout. Native resize edges, shadow,
+rounded corners, Aero Snap, and the system menu are retained.
 
 ```
 ┌──────────────┬───────────────────────────────────┬─────────────┐
@@ -365,7 +370,13 @@ A regular, resizable window.
 
 ### 6.2 Compact
 
-A small resizable window (default about 320×420).
+A small resizable window (default about 320×420). Its existing header is the
+custom title bar: logo, RunBay, connected-agent indicator, pin, Icon mode,
+Full mode, Minimize, and Close. The logo, title, and empty space allow native
+dragging; the agent indicator and controls remain interactive. Compact cannot
+maximize (including double-click and Win+Up), and has no Maximize button.
+The native frame retains resize, shadow, rounded corners, Aero Snap, and the
+system menu in both taskbar settings.
 
 - List of apps (icon, name, badge) with direct icons for all configured actions,
   including custom actions. The same width-based overflow menu as Full is used.
@@ -375,7 +386,7 @@ A small resizable window (default about 320×420).
   run, live while running, with Stop and Open in Full buttons. Its output uses
   the same selection, copying, and follow-mode controls as Full (§5.3), with the
   configured on-screen line limit.
-- Buttons: always on top (pin), switch mode.
+- Buttons: always on top (pin), switch mode, Minimize, Close.
 - **Copy MCP setup** copies the Claude Desktop/Codex setup instructions (§15.1)
   directly from the Compact window.
 - **Version**: the RunBay version is shown in a small footer of the window,
@@ -460,8 +471,15 @@ in sync with this button.
 
 The taskbar icon switches in Appearance show or hide the taskbar button of the
 Full and Compact windows (the Icon mode window never has one). Changes apply
-immediately to a visible window without activating it. With the button hidden,
-the window is also left out of Alt+Tab and the tray icon opens RunBay. MCP
+immediately to a visible window without activating it. Both windows keep the
+same custom caption and regular frame in either setting; neither uses the tool
+window style. A shared, zero-size, never-shown top-level owner suppresses the
+taskbar button, keeping the windows eligible for zone-based layout tools such
+as Shift+drag snapping. Owned windows may also be omitted from Alt+Tab; the
+tray icon opens RunBay. With the taskbar button shown, Minimize minimizes
+normally; with it hidden, Minimize hides to the tray and saves window state,
+just like Close. The policy also applies to system-menu Minimize and Win+Down.
+The Icon window and popup keep their existing tool window behavior. MCP
 `update_settings` accepts `taskbar_full` and `taskbar_compact`.
 
 The Appearance category's Console theme selector stays in sync with the console
@@ -493,7 +511,7 @@ with the `--autostart` argument; turning it off removes the value. With
 - Left click: show/focus the window of the active mode.
 - Menu: Full / Compact / Icon, Always on top, Load with Windows,
   Check for updates (or *Restart to update* when an update is ready), Exit.
-- Closing the window (× button) in Full/Compact **hides it to the tray** instead
+- Closing the window (× button in the custom title bar) in Full/Compact **hides it to the tray** instead
   of exiting. Exiting is only through the Exit menu.
 - Exiting with active runs → dialog: *Stop all and exit* / *Cancel*.
 
@@ -536,6 +554,14 @@ overload rendering.
   action buttons shaped as pills/rounded squares that morph when pressed).
 - Expressive motion: short spring transitions for the Action History flyout, the
   icon popup, and badge changes; no animation while idle.
+- Full caption buttons are 46×36 px with 16 px Material Symbols Rounded icons
+  (Minimize, Maximize/Restore, Close). Compact caption controls use the existing
+  32 px SymbolButton style. Icons use `on-surface-variant`; hover/press use the
+  existing state layers, and Close hover uses `error` / `on-error`. Inactive
+  caption titles and buttons are dimmed. Caption controls expose button roles
+  and Minimize, Maximize/Restore, or Close accessibility labels. Windows 11
+  rounded corners are requested explicitly. Caption metrics follow layout and
+  per-monitor DPI changes without idle polling.
 - UI icons (buttons, toolbars, menus, badges): **Material Symbols Rounded**
   (Google, Apache-2.0). Only the icons in use are added to the repository as SVG
   files, embedded at build time with `@image-url`, and tinted with theme tokens

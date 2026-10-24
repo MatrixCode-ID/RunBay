@@ -2,7 +2,7 @@
 
 import { ListView, LineEdit, TextEdit, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, TooltipContent, OutputView, ConsoleThemeButton } from "components.slint";
+import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, TooltipContent, OutputView, ConsoleThemeButton, TitleBar } from "components.slint";
 import { Span, OutputRow, ActionButton, RunRow, AppRow, Clock } from "types.slint";
 import { EditorPage, SettingsPage, HistoryFlyout, AboutDialog } from "pages.slint";
 
@@ -212,9 +212,26 @@ export component MainWindow inherits Window {
     preferred-width: 1100px;
     preferred-height: 700px;
     min-width: 640px;
-    min-height: 400px;
+    min-height: 436px;
     background: Theme.surface;
     default-font-size: Theme.body-medium;
+
+    in property <bool> window-active: true;
+    in property <bool> window-maximized;
+    in property <bool> max-hover;
+    in property <bool> max-pressed;
+    out property <length> caption-height: 36px;
+    out property <length> drag-end: caption.drag-end;
+    out property <length> max-button-x: caption.max-button-x;
+    out property <length> max-button-width: 46px;
+    callback caption-minimize();
+    callback caption-maximize();
+    callback caption-close();
+    callback caption-metrics-changed();
+    changed caption-height => { root.caption-metrics-changed(); }
+    changed drag-end => { root.caption-metrics-changed(); }
+    changed max-button-x => { root.caption-metrics-changed(); }
+    changed max-button-width => { root.caption-metrics-changed(); }
 
     in property <string> version;
     in property <int> theme-mode;
@@ -303,6 +320,8 @@ export component MainWindow inherits Window {
     }
 
     HorizontalLayout {
+        y: root.caption-height;
+        height: parent.height - root.caption-height;
         // Navigation.
         Rectangle {
             width: 320px;
@@ -619,9 +638,14 @@ export component MainWindow inherits Window {
         }
     }
 
-    if page == "editor": EditorPage { }
+    if page == "editor": EditorPage {
+        y: root.caption-height;
+        height: parent.height - root.caption-height;
+    }
 
     if page == "settings": SettingsPage {
+        y: root.caption-height;
+        height: parent.height - root.caption-height;
         close => { root.page = ""; }
     }
 
@@ -754,5 +778,19 @@ export component MainWindow inherits Window {
                 clicked => { root.exit-answer("exit"); }
             }
         }
+    }
+
+    // Keep caption controls above page and dialog overlays, like native chrome.
+    caption := TitleBar {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        window-active: root.window-active;
+        maximized: root.window-maximized;
+        max-hover: root.max-hover;
+        max-pressed: root.max-pressed;
+        minimize => { root.caption-minimize(); }
+        maximize => { root.caption-maximize(); }
+        close => { root.caption-close(); }
     }
 }

@@ -155,7 +155,7 @@ fn console_palettes_render_independently_in_full_and_output_popups() {
     // Dispatch directly into the software windows to verify the real hit targets.
     // This never sends operating-system input or changes desktop focus.
     for (window, bridge, x, y) in [
-        (&full_window, full.global::<OutputBridge>(), 968.0, 30.0),
+        (&full_window, full.global::<OutputBridge>(), 968.0, 66.0),
         (
             &compact_window,
             compact.global::<OutputBridge>(),
