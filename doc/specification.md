@@ -501,9 +501,12 @@ The runner works on its own thread; the UI only receives events through
 - Every version needs a release note `doc/ReleaseNote/<version>.md`; its file
   name is the source of the version and its content is the body of the GitHub
   Release. Format and rules: [doc/ReleaseNote/README.md](ReleaseNote/README.md).
+  The note of the next version is prepared in `doc/ReleaseNote-Candidate/` and
+  moved to `doc/ReleaseNote/` to release it; the candidate folder does not start
+  the Release workflow.
 - Publishing is automatic: the [Release workflow](../.github/workflows/release.yml)
-  runs on every push to `main` that changes `src/**`, `Cargo.toml`, or
-  `Cargo.lock`. It releases the single release note that has no `v<version>` tag
+  runs only on a push to `main` that changes `doc/ReleaseNote/**`; other pushes
+  do not start it. It runs CI first, then releases the single release note that has no `v<version>` tag
   yet: builds `RunBay.exe` with that version, tags `v<version>`, and creates the
   release with its assets. Without an untagged release note nothing is published.
 - Auto update needs the repository and its releases to be **public**; the

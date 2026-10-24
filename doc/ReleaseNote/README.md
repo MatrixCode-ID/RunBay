@@ -5,16 +5,22 @@ Every RunBay version has one release note: `doc/ReleaseNote/<version>.md`, e.g.
 
 ## How a release happens
 
-1. On `work-bench`, change the application and add the release note of the next
-   version. Raise `version` in `Cargo.toml` to the same version in the same change.
-2. Merge `work-bench` into `main` and push `main` to `origin`.
-3. When the push changes `src/**`, `Cargo.toml`, or `Cargo.lock`, the
+1. On `work-bench`, prepare the release note of the next version in
+   `doc/ReleaseNote-Candidate/<version>.md` and keep it up to date while features
+   are added. It collects every user-facing change since the previous release
+   (the latest `v*` tag). The candidate folder does not start the Release workflow.
+2. When the version is ready to release, move the note from
+   `doc/ReleaseNote-Candidate/` to `doc/ReleaseNote/`. Raise `version` in
+   `Cargo.toml` to the same version in the same change.
+3. Merge `work-bench` into `main` and push `main` to `origin`.
+4. When the push changes `doc/ReleaseNote/**`, the
    [Release workflow](../../.github/workflows/release.yml) takes the single release
-   note without a `v<version>` tag, builds `RunBay.exe` with that version, tags
+   note without a `v<version>` tag, runs CI, builds `RunBay.exe` with that version, tags
    `v<version>`, and publishes a GitHub Release with `RunBay.exe` and `SHA256SUMS`.
    The release note becomes the release body.
 
-Without an untagged release note the push publishes nothing. The workflow fails when
+A push without a release note change does not start the workflow, and a push that
+only edits an already tagged release note publishes nothing. The workflow fails when
 more than one release note is untagged, when the version is not higher than the latest
 tag, or when `## Summary` is empty.
 

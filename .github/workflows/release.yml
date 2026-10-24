@@ -1,13 +1,14 @@
 name: Release
 
-# A push to main that changes the application (src/**, Cargo.toml, Cargo.lock) releases the version of the
-# single untagged release note in doc/ReleaseNote/<version>.md: it builds RunBay.exe with that version,
-# tags v<version>, and creates the GitHub Release. Without an untagged release note nothing is published.
+# A push to main that changes doc/ReleaseNote/** releases the version of the single untagged release note
+# in doc/ReleaseNote/<version>.md: it runs CI, builds RunBay.exe with that version, tags v<version>, and
+# creates the GitHub Release. A push without a release note change does not start this workflow, and
+# without an untagged release note nothing is published (user decision 2026-10-24, as in em-system).
 # Tags pushed by this workflow use GITHUB_TOKEN, so they do not trigger another run.
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'Cargo.toml', 'Cargo.lock']
+    paths: ['doc/ReleaseNote/**']
   workflow_dispatch: {}
 
 permissions:
@@ -80,8 +81,13 @@ jobs:
           Write-Host "::notice::Releasing $($version.Text)"
           "version=$($version.Text)" >> $env:GITHUB_OUTPUT
 
-  release:
+  ci:
     needs: validate
+    if: needs.validate.outputs.version != ''
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: [validate, ci]
     if: needs.validate.outputs.version != ''
     runs-on: windows-latest
     permissions:

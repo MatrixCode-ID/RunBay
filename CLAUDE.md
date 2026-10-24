@@ -100,13 +100,27 @@ RunBay will be published as open source under the **MIT license**.
 
 ## Releases
 
-- A push to `main` that changes `src/**`, `Cargo.toml`, or `Cargo.lock` runs
-  `.github/workflows/release.yml`, which publishes the version of the single
-  untagged release note in `doc/ReleaseNote/<version>.md`.
+- A push to `main` that changes `doc/ReleaseNote/**` runs
+  `.github/workflows/release.yml`, which runs CI and publishes the version of the
+  single untagged release note in `doc/ReleaseNote/<version>.md`. A push without
+  a release note change does not start it (user decision 2026-10-24, as in
+  em-system). CI on a push to `main` runs only when the build or tests change.
 - Every release needs its release note; follow
-  [doc/ReleaseNote/README.md](doc/ReleaseNote/README.md). Add the note and raise
-  `version` in `Cargo.toml` in the same change, and only when the user asks for a
-  release. One untagged release note per push to `main`.
+  [doc/ReleaseNote/README.md](doc/ReleaseNote/README.md). The note of the next
+  version is prepared in `doc/ReleaseNote-Candidate/<version>.md` and updated as
+  features are added; that folder does not start the workflow (user decision
+  2026-10-24). Move it to `doc/ReleaseNote/` and raise `version` in `Cargo.toml`
+  in the same change, and only when the user asks for a release. One untagged
+  release note per push to `main`.
+- Every feature or code fix is recorded in the release note candidate in
+  `doc/ReleaseNote-Candidate/<version>.md` in the same change (user decision
+  2026-10-24): new behavior under `## New features`, fixes under `## Fixes`, and
+  anything users must do under `## Upgrade notes`. Keep `## Summary` current.
+  When no candidate exists, create one for the next version in the format of
+  [doc/ReleaseNote/README.md](doc/ReleaseNote/README.md). Changes that do not
+  affect users (refactors, tests, docs, CI) are not listed. The candidate thus
+  collects every user-facing change in the repository since the previous release
+  (the latest `v*` tag; for the first release, everything so far).
 - Never create or push `v*` tags by hand; the workflow does it.
 
 ## Local artifacts

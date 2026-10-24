@@ -1,13 +1,23 @@
 name: CI
 
-# Format, lint, and test on every push to main and on pull requests. work-bench is not
-# checked by CI (user decision 2026-10-24); run the checks locally there.
-# Releases are handled by release.yml.
+# Format, lint, and test on pull requests and on pushes to main that change the build or tests;
+# doc-only pushes are skipped. work-bench is not checked by CI (user decision 2026-10-24); run the
+# checks locally there. The path filter does not apply to workflow_dispatch or workflow_call
+# (release.yml always runs CI before publishing).
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'ui/**'
+      - 'build.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/ci.yml'
   pull_request: {}
   workflow_dispatch: {}
+  workflow_call: {}
 
 permissions:
   contents: read
