@@ -151,6 +151,13 @@ RunBay will be published as open source under the **MIT license**.
   commit the change on `work-bench` (user decision 2026-10-25). The request
   itself is the permission to commit; do not push unless asked.
 - Never create or push `v*` tags by hand; the workflow does it.
+- The RunBay `Publish GitHub release` action prepares the current candidate,
+  creates the next empty candidate, commits on `work-bench`, merges into `main`,
+  pushes `main` to `origin`, and follows the Release workflow (user decision
+  2026-10-25). Invoking the action authorizes these release steps. It must fail
+  before changing branches or release files when the repository has staged,
+  unstaged, or untracked changes, and show which files must be committed. It
+  never automatically commits unrelated working-tree changes.
 
 ## Local artifacts
 
