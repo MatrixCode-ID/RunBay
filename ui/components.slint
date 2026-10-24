@@ -1,0 +1,257 @@
+// Shared building blocks: icon buttons, status badges, chips, avatars, and dialogs.
+
+import { Theme, Icons } from "theme.slint";
+
+// An icon button with an M3 state layer. `style`: "standard", "tonal", "filled", "tertiary".
+// The shape morphs from a circle to a rounded square while pressed (M3 Expressive).
+export component SymbolButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <string> tooltip;
+    in property <string> style: "standard";
+    in property <bool> enabled: true;
+    in property <bool> active;
+    in property <bool> agent;
+    in property <length> size: 36px;
+    in property <length> icon-size: 20px;
+    in property <brush> icon-color: style == "filled" ? Theme.on-primary
+        : style == "tertiary" ? Theme.on-tertiary
+        : style == "tonal" ? Theme.on-secondary-container
+        : Theme.on-surface-variant;
+    // Plays the press animation without a click (used for runs started by agents).
+    in property <bool> pulse;
+    callback clicked();
+
+    property <bool> pressed: touch.pressed || pulse;
+    min-width: label == "" ? size : size + label-text.preferred-width + 20px;
+    height: size;
+    border-radius: pressed ? Theme.corner-small : self.height / 2;
+    background: !enabled ? transparent
+        : style == "filled" ? Theme.primary
+        : style == "tertiary" ? Theme.tertiary
+        : style == "tonal" ? Theme.secondary-container
+        : transparent;
+    opacity: enabled ? 1 : 0.38;
+    animate border-radius { duration: Theme.motion-fast; easing: ease-out; }
+
+    accessible-role: button;
+    accessible-label: tooltip != "" ? tooltip : label;
+    accessible-action-default => { if (enabled) { root.clicked(); } }
+
+    state-layer := Rectangle {
+        border-radius: parent.border-radius;
+        background: Theme.on-surface;
+        opacity: !enabled ? 0 : touch.pressed ? 0.12 : touch.has-hover ? 0.08 : 0;
+        animate opacity { duration: Theme.motion-fast; }
+    }
+
+    HorizontalLayout {
+        padding-left: label == "" ? (size - icon-size) / 2 : 10px;
+        padding-right: label == "" ? (size - icon-size) / 2 : 12px;
+        spacing: 6px;
+        alignment: center;
+        Image {
+            source: icon;
+            width: icon-size;
+            height: icon-size;
+            colorize: icon-color;
+            y: (parent.height - self.height) / 2;
+        }
+        label-text := Text {
+            visible: label != "";
+            text: label;
+            color: icon-color;
+            font-size: Theme.label-large;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+    }
+
+    if agent: Rectangle {
+        x: parent.width - 14px;
+        y: -2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: Theme.tertiary-container;
+        Image {
+            source: Icons.agent;
+            width: 12px;
+            height: 12px;
+            colorize: Theme.on-tertiary-container;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    if tooltip != "" && touch.has-hover: Rectangle {
+        y: parent.height + 4px;
+        x: (parent.width - tip.preferred-width - 16px) / 2;
+        width: tip.preferred-width + 16px;
+        height: 24px;
+        border-radius: 4px;
+        background: Theme.inverse-surface;
+        tip := Text {
+            text: tooltip;
+            color: Theme.inverse-on-surface;
+            font-size: Theme.label-medium;
+        }
+    }
+}
+
+// The badge of a run status: running (spinning), success, failed, stopped, skipped.
+export component StatusBadge inherits Rectangle {
+    in property <string> status;
+    in property <length> size: 18px;
+    in property <bool> agent;
+    width: status == "" ? 0 : size;
+    height: size;
+    visible: status != "";
+
+    accessible-role: text;
+    accessible-label: status;
+
+    Image {
+        width: size;
+        height: size;
+        source: status == "running" ? Icons.running
+            : status == "success" ? Icons.success
+            : status == "failed" ? Icons.failed
+            : Icons.stopped;
+        colorize: status == "running" ? (agent ? Theme.tertiary : Theme.primary)
+            : status == "success" ? Theme.success
+            : status == "failed" ? Theme.error
+            : Theme.outline;
+        transform-rotation: status == "running" ? mod(animation-tick() / 1.4ms, 360) * 1deg : 0deg;
+    }
+}
+
+// "by <agent>" chip for runs started by an MCP agent.
+export component AgentChip inherits Rectangle {
+    in property <string> agent;
+    visible: agent != "";
+    height: agent == "" ? 0 : 22px;
+    width: agent == "" ? 0 : chip-layout.preferred-width;
+    border-radius: 11px;
+    background: Theme.tertiary-container;
+    chip-layout := HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 8px;
+        spacing: 4px;
+        Image {
+            source: Icons.agent;
+            width: 14px;
+            colorize: Theme.on-tertiary-container;
+        }
+        Text {
+            text: "by " + agent;
+            color: Theme.on-tertiary-container;
+            font-size: Theme.label-small;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// App icon, or the first letter of its name on a tonal circle.
+export component Avatar inherits Rectangle {
+    in property <image> icon;
+    in property <bool> has-icon;
+    in property <string> initial;
+    in property <length> size: 32px;
+    width: size;
+    height: size;
+    border-radius: size / 3;
+    background: has-icon ? transparent : Theme.primary-container;
+    if has-icon: Image {
+        source: icon;
+        width: size;
+        height: size;
+        image-fit: contain;
+    }
+    if !has-icon: Text {
+        text: initial;
+        color: Theme.on-primary-container;
+        font-size: size * 0.5;
+        font-weight: 600;
+    }
+}
+
+// A modal scrim with a centered dialog surface; content goes inside.
+export component DialogFrame inherits Rectangle {
+    in property <string> title;
+    in property <length> dialog-width: 420px;
+    callback dismissed();
+    background: #00000066;
+
+    TouchArea {
+        clicked => { root.dismissed(); }
+    }
+
+    surface := Rectangle {
+        width: min(dialog-width, root.width - 32px);
+        height: min(content.preferred-height, root.height - 32px);
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        border-radius: Theme.corner-extra-large;
+        background: Theme.surface-container-high;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #0000004d;
+        // Swallow clicks so they do not reach the scrim.
+        TouchArea { }
+        content := VerticalLayout {
+            padding: 24px;
+            spacing: 16px;
+            Text {
+                text: title;
+                font-size: Theme.title-large;
+                color: Theme.on-surface;
+                wrap: word-wrap;
+            }
+            @children
+        }
+    }
+}
+
+// A text button in M3 style ("text", "tonal", "filled").
+export component PillButton inherits Rectangle {
+    in property <string> text;
+    in property <string> style: "text";
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 40px;
+    min-width: label.preferred-width + 24px;
+    border-radius: touch.pressed ? Theme.corner-small : 20px;
+    animate border-radius { duration: Theme.motion-fast; easing: ease-out; }
+    background: !enabled ? transparent
+        : style == "filled" ? Theme.primary
+        : style == "tonal" ? Theme.secondary-container
+        : style == "danger" ? Theme.error
+        : transparent;
+    opacity: enabled ? 1 : 0.38;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-action-default => { if (enabled) { root.clicked(); } }
+    Rectangle {
+        border-radius: parent.border-radius;
+        background: Theme.on-surface;
+        opacity: !enabled ? 0 : touch.pressed ? 0.12 : touch.has-hover ? 0.08 : 0;
+    }
+    label := Text {
+        text: root.text;
+        font-size: Theme.label-large;
+        font-weight: 500;
+        color: style == "filled" ? Theme.on-primary
+            : style == "tonal" ? Theme.on-secondary-container
+            : style == "danger" ? Theme.on-error
+            : Theme.primary;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

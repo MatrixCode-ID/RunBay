@@ -1,0 +1,115 @@
+// RunBay design tokens: Material 3 color roles (light/dark), type scale, shapes, motion,
+// and the Material Symbols Rounded icons in use.
+
+import { Palette } from "std-widgets.slint";
+
+export global Theme {
+    // Follows the color scheme of the Material style (Windows theme or the user override).
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+
+    // Color roles (M3 baseline, tuned for RunBay).
+    out property <color> primary: dark ? #d0bcff : #6750a4;
+    out property <color> on-primary: dark ? #381e72 : #ffffff;
+    out property <color> primary-container: dark ? #4f378b : #eaddff;
+    out property <color> on-primary-container: dark ? #eaddff : #21005d;
+    out property <color> secondary-container: dark ? #4a4458 : #e8def8;
+    out property <color> on-secondary-container: dark ? #e8def8 : #1d192b;
+    out property <color> tertiary: dark ? #efb8c8 : #7d5260;
+    out property <color> on-tertiary: dark ? #492532 : #ffffff;
+    out property <color> tertiary-container: dark ? #633b48 : #ffd8e4;
+    out property <color> on-tertiary-container: dark ? #ffd8e4 : #31111d;
+    out property <color> error: dark ? #f2b8b5 : #b3261e;
+    out property <color> on-error: dark ? #601410 : #ffffff;
+    out property <color> error-container: dark ? #8c1d18 : #f9dedc;
+    out property <color> success: dark ? #7dd98f : #1e7b34;
+    out property <color> success-container: dark ? #1f4d2a : #c8f2cf;
+    out property <color> surface: dark ? #141218 : #fef7ff;
+    out property <color> surface-dim: dark ? #141218 : #ded8e1;
+    out property <color> surface-container-lowest: dark ? #0f0d13 : #ffffff;
+    out property <color> surface-container-low: dark ? #1d1b20 : #f7f2fa;
+    out property <color> surface-container: dark ? #211f26 : #f3edf7;
+    out property <color> surface-container-high: dark ? #2b2930 : #ece6f0;
+    out property <color> surface-container-highest: dark ? #36343b : #e6e0e9;
+    out property <color> on-surface: dark ? #e6e0e9 : #1d1b20;
+    out property <color> on-surface-variant: dark ? #cac4d0 : #49454f;
+    out property <color> outline: dark ? #938f99 : #79747e;
+    out property <color> outline-variant: dark ? #49454f : #cac4d0;
+    out property <color> scrim: #000000;
+    out property <color> inverse-surface: dark ? #e6e0e9 : #322f35;
+    out property <color> inverse-on-surface: dark ? #322f35 : #f5eff7;
+    out property <color> inverse-primary: dark ? #6750a4 : #d0bcff;
+
+    // Console.
+    out property <color> console-background: dark ? #0f0d13 : #fbf8fd;
+    out property <color> console-text: dark ? #e6e0e9 : #1d1b20;
+    out property <color> console-error: dark ? #ffb4ab : #b3261e;
+    out property <string> mono-font: "Cascadia Mono";
+    out property <length> mono-size: 13px;
+
+    // Type scale.
+    out property <length> title-large: 22px;
+    out property <length> title-medium: 16px;
+    out property <length> title-small: 14px;
+    out property <length> body-large: 16px;
+    out property <length> body-medium: 14px;
+    out property <length> body-small: 12px;
+    out property <length> label-large: 14px;
+    out property <length> label-medium: 12px;
+    out property <length> label-small: 11px;
+
+    // Shapes (Expressive: large corners).
+    out property <length> corner-small: 8px;
+    out property <length> corner-medium: 12px;
+    out property <length> corner-large: 16px;
+    out property <length> corner-extra-large: 28px;
+
+    // Motion: short spring-like easing for flyouts, popups, and badges.
+    out property <duration> motion-fast: 120ms;
+    out property <duration> motion-medium: 250ms;
+}
+
+// Material Symbols Rounded (Apache-2.0); outlined for idle states, *-fill for active ones.
+export global Icons {
+    out property <image> build: @image-url("icons/build.svg");
+    out property <image> build-fill: @image-url("icons/build_fill1.svg");
+    out property <image> play: @image-url("icons/play_arrow.svg");
+    out property <image> play-fill: @image-url("icons/play_arrow_fill1.svg");
+    out property <image> rocket: @image-url("icons/rocket_launch.svg");
+    out property <image> rocket-fill: @image-url("icons/rocket_launch_fill1.svg");
+    out property <image> more-vert: @image-url("icons/more_vert.svg");
+    out property <image> stop: @image-url("icons/stop_fill1.svg");
+    out property <image> copy: @image-url("icons/content_copy.svg");
+    out property <image> description: @image-url("icons/description.svg");
+    out property <image> add: @image-url("icons/add.svg");
+    out property <image> edit: @image-url("icons/edit.svg");
+    out property <image> delete: @image-url("icons/delete.svg");
+    out property <image> folder-open: @image-url("icons/folder_open.svg");
+    out property <image> folder: @image-url("icons/folder.svg");
+    out property <image> history: @image-url("icons/history.svg");
+    out property <image> settings: @image-url("icons/settings.svg");
+    out property <image> close: @image-url("icons/close.svg");
+    out property <image> success: @image-url("icons/check_circle_fill1.svg");
+    out property <image> failed: @image-url("icons/error_fill1.svg");
+    out property <image> stopped: @image-url("icons/cancel_fill1.svg");
+    out property <image> running: @image-url("icons/progress_activity.svg");
+    out property <image> agent: @image-url("icons/smart_toy_fill1.svg");
+    out property <image> pin: @image-url("icons/push_pin.svg");
+    out property <image> pin-fill: @image-url("icons/push_pin_fill1.svg");
+    out property <image> open-full: @image-url("icons/open_in_full.svg");
+    out property <image> compact: @image-url("icons/view_agenda.svg");
+    out property <image> bubble: @image-url("icons/bubble_chart.svg");
+    out property <image> full: @image-url("icons/desktop_windows.svg");
+    out property <image> chat: @image-url("icons/chat.svg");
+    out property <image> chat-fill: @image-url("icons/chat_fill1.svg");
+    out property <image> info: @image-url("icons/info.svg");
+    out property <image> download: @image-url("icons/download.svg");
+    out property <image> undo: @image-url("icons/undo.svg");
+    out property <image> filter: @image-url("icons/filter_list.svg");
+    out property <image> drag: @image-url("icons/drag_indicator.svg");
+    out property <image> terminal: @image-url("icons/terminal.svg");
+    out property <image> clear-all: @image-url("icons/clear_all.svg");
+    out property <image> expand-more: @image-url("icons/expand_more.svg");
+    out property <image> chevron-right: @image-url("icons/chevron_right.svg");
+    out property <image> refresh: @image-url("icons/refresh.svg");
+    out property <image> logo: @image-url("logo/runbay.svg");
+}

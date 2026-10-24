@@ -1,0 +1,57 @@
+// Data passed between Rust and the UI.
+
+// A styled piece of an output line.
+export struct Span {
+    text: string,
+    color: color,
+    colored: bool,
+    bold: bool,
+}
+
+// One output line.
+export struct OutputRow {
+    spans: [Span],
+    stderr: bool,
+}
+
+// An action button of an app.
+export struct ActionButton {
+    id: string,
+    name: string,
+    kind: string,
+    enabled: bool,
+    // "running" while one of its runs is active, otherwise "".
+    status: string,
+    // The active run was started by an agent.
+    agent: bool,
+}
+
+// A run listed below its app in the navigation, or in a tab strip.
+export struct RunRow {
+    run-id: string,
+    title: string,
+    status: string,
+    agent: string,
+    time: string,
+    selected: bool,
+}
+
+// An app card in the navigation.
+export struct AppRow {
+    id: string,
+    name: string,
+    initial: string,
+    icon: image,
+    has-icon: bool,
+    // Name of the group when this app is the first of its group, otherwise "".
+    group-header: string,
+    status: string,
+    status-agent: bool,
+    agent: string,
+    error: string,
+    build: ActionButton,
+    run: ActionButton,
+    build-run: ActionButton,
+    customs: [ActionButton],
+    runs: [RunRow],
+}

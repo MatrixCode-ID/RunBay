@@ -161,15 +161,26 @@ Retention is applied after each run finishes and on startup, per action:
 - `forever` — no automatic cleanup.
 
 A build+run is recorded as one run of the `buildRun` action (its log holds the
-build and run sections in order, with section markers).
+build and run sections in order, with section markers). When the build fails, the
+run part is skipped: the record gets status `failed` with the build's exit code,
+and the log shows a "Run skipped" marker. The `skipped` status is reserved for a
+future separate record of the skipped part.
 
 ## 5. Running actions
 
 ### 5.1 Process
 
 - Scripts run as
-  `<shell> -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File <script>`
-  with the working directory and environment merged from app + action.
+  `<shell> -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command <bootstrap>`.
+  The bootstrap sets the output encoding to UTF-8 (and, in pwsh 7, ANSI output
+  rendering), then invokes the script with `& '<script>'`. The exit code of the run
+  is the script's `exit` value; otherwise the exit code of the last native command;
+  otherwise 1 when the script ended with an error, else 0. (A `-Command` bootstrap
+  is used instead of `-File` because the encoding must be set before the script
+  starts.)
+- The working directory and environment are merged from app + action. When neither
+  the action nor the app sets a working directory, the app data folder
+  (`data/apps/<app-id>`) is used.
 - The environment variables `RUNBAY_APP_ID`, `RUNBAY_ACTION_ID`,
   `RUNBAY_RUN_ID`, and `RUNBAY_APP_DIR` (the `data/apps/<app-id>` folder) are added.
 - stdout and stderr are read through pipes and merged in arrival order; stderr
@@ -177,9 +188,16 @@ build and run sections in order, with section markers).
 - Every run is placed in a **Windows Job Object**
   (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) so **Stop** ends the whole process tree
   (e.g. `dotnet build` with its children, or the application being run).
+- A run lasts until **every process of its tree** has exited, not only the
+  PowerShell process: a run script that starts the application (e.g. with
+  `Start-Process`) stays *running* while the application lives, so `whenRunning`
+  and Stop apply to it. The exit code is still the one of the script.
 - No console window is shown (`CREATE_NO_WINDOW`).
 - Output is decoded as UTF-8; RunBay sets `[Console]::OutputEncoding` to UTF-8
   through a startup argument so pwsh and 5.1 output is consistent.
+- Log files hold the plain text of every line (ANSI escape sequences removed), so
+  they read well in any editor. Scripts written by RunBay are saved as UTF-8 with
+  BOM so Windows PowerShell 5.1 reads non-ASCII text correctly.
 
 ### 5.2 Action while the app is still running (`whenRunning`)
 
@@ -327,6 +345,11 @@ with the `--autostart` argument; turning it off removes the value. With
 Only one instance per user. Starting RunBay again focuses the window of the
 running instance and exits. The instance is found through its named pipe, which
 also serves the MCP bridge (§15.1).
+
+Development option: `--data-dir <path>` uses another data folder. Such an instance
+gets its own pipe name (`RunBay-<user SID>-<hash of the folder>`), so a test
+instance and the bridge started with the same option never talk to the user's
+real instance.
 
 ## 11. Non-functional targets
 
