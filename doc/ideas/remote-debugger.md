@@ -53,6 +53,19 @@ Linux workstation                              Windows host
   tool only and must not be used to run applications for end users or in
   non-development environments; security hardening is therefore not a main
   concern. (user)
+- 2026-10-24: **First step:** RunBay Server runs the app's actions (build, run,
+  debug runs) on the Windows host for RunBay on Linux, and the application's UI
+  is reached with an ordinary **VNC** remote desktop. The RDP server with
+  per-window RAIL stays a later step. (user)
+- 2026-10-24: **Agent debugging goal:** when an agent on Linux debugs an
+  application running on the server and something goes wrong after an action in
+  the GUI (e.g. a button pressed through VNC), the agent must be able to find out
+  **where in the source to debug**. (user)
+- 2026-10-24: The debug timeline targets **.NET WPF and WinForms** first, and is
+  part of the **first step**, together with remote runs and VNC. (user)
+- 2026-10-24: The source reaches the Windows host in one of three ways, chosen
+  per app: **Git**, a **shared folder**, or a **folder already prepared on the
+  server**. (user)
 - 2026-10-24: Purpose: develop Windows applications from Linux. RunBay runs on
   Linux, connects to RunBay Server on a Windows host, and agents use RunBay to
   build and debug there. (user)
@@ -89,6 +102,78 @@ Linux workstation                              Windows host
 - Hardest parts: RAIL on the server side (mapping windows, popups, menus,
   z-order), input injection, and the user session staying logged in and
   unlocked (auto-logon, virtual display driver for headless hosts).
+
+## First step with VNC (agent notes, not decided)
+
+- RunBay Server starts actions in the logged-on user's session, which is the
+  console session; a VNC server on the host shares exactly that session, so the
+  application started by RunBay Server is visible and usable through VNC.
+- VNC works on every Windows edition, so the "every edition" decision holds.
+- The VNC server and viewer are **separate, existing tools** run next to RunBay,
+  not part of its code: e.g. TightVNC/UltraVNC/TigerVNC on Windows and TigerVNC
+  viewer or Remmina on Linux. Most of them are GPL, which is fine as long as
+  RunBay only launches them as separate programs and never links or copies
+  their code.
+- Optional convenience later: RunBay on Linux opens the VNC viewer for the
+  server's host with one click.
+- VNC shows the whole desktop, not single windows, and is not encrypted by
+  default; on a development LAN that is acceptable, otherwise tunnel it (e.g.
+  SSH).
+- What the first step needs from RunBay Server: connection from RunBay (Linux),
+  app/action definitions, starting/stopping runs, streaming output and status,
+  history; and getting the source onto the host (still open).
+
+## From a GUI problem to a source location (agent proposal, not decided)
+
+A **debug run** on RunBay Server collects, on one timeline, what the user did,
+what the application did, and where in the code it went wrong. Agents read it
+through MCP tools.
+
+1. **UI action trail** — RunBay Server records UI Automation events of the
+   application's windows: which element was invoked (control type, `Name`,
+   `AutomationId`, window), focus changes, and new windows/dialogs, with a
+   timestamp. An agent searches the source for the `AutomationId`/`Name` (e.g.
+   in XAML) to find the handler or command behind the button. Works for any
+   UI technology that exposes UI Automation (WPF, WinForms, WinUI, most others).
+2. **Screenshots at events** — a capture of the window right after each invoked
+   action and on every error, so the agent sees what the user saw.
+3. **Exceptions with source locations** — the run is started under a debugger
+   that reports first-chance and unhandled exceptions with stack traces. For
+   .NET, `netcoredbg` (MIT) through the Debug Adapter Protocol; other runtimes
+   can use their own DAP adapters (e.g. `lldb-dap` for native code). Output
+   lines and logs stay on the same timeline.
+4. **Paths that exist on Linux** — the build maps source paths to the Linux
+   checkout (for .NET, `PathMap` in the build), so stack traces and PDBs point
+   to files the agent can open directly. Without it, RunBay maps the paths when
+   showing them.
+5. **Crash dumps** — on a crash, a minidump is written (Windows Error Reporting
+   local dumps) and attached to the run.
+6. **Interactive debugging (later)** — MCP tools that pass DAP requests through:
+   set breakpoints, continue, step, read the stack and variables, so the agent
+   can reproduce the action and stop at the suspected code.
+
+Possible MCP tools: `get_timeline(run_id)`, `get_exceptions(run_id)` (stack
+with mapped paths), `get_ui_events(run_id)`, `capture_window(run_id)`, and later
+`debug_*` tools for breakpoints and stepping.
+
+Example: the user presses *Save* through VNC → the timeline shows
+`Button "Save" (AutomationId=SaveButton)` at 10:15:41, a screenshot, and a
+`NullReferenceException` at `src/Orders/OrderEditorViewModel.cs:212` 80 ms later
+→ the agent opens that file and the handler bound to `SaveButton`.
+
+## Source modes (agent notes, not decided)
+
+| Mode | How | Notes |
+| --- | --- | --- |
+| **Git** | Before a build, RunBay Server fetches and checks out the branch/commit the Linux side is on, into its own working folder | Needs the commit to be reachable by the server (pushed to a shared remote). Uncommitted work could travel as a patch of the working tree applied after checkout. |
+| **Shared folder** | The server builds directly from a folder shared between Linux and Windows (e.g. a Samba share of the Linux checkout, or a Windows share mounted on Linux) | No copy step; edits are visible at once. Building over the network is slower and file watching/locking can misbehave, so build output (`bin/`, `obj/`) should go to a local folder on the server. |
+| **Prepared folder** | The app points to a folder that already exists on the server; the user keeps it up to date | RunBay does nothing to the source. |
+
+- For every mode the app definition holds the **path mapping** between the
+  server folder and the Linux checkout, used for `PathMap` in .NET builds and
+  for mapping stack traces, so the agent always gets Linux paths.
+- Git and shared folder can show, per run, which commit (and whether there were
+  local changes) was built; the run history records it.
 
 ## Running at logon instead of as a service (agent notes, not decided)
 
@@ -140,8 +225,12 @@ Linux workstation                              Windows host
 - **Keeping the door open in v1 (no scope change):** keep the internal protocol
   independent of the transport, and leave room in the run/history format for
   attachments (images, video) and a host.
-- **Possible order:** (1) local window capture + MCP tool, (2) RunBay Server for
-  remote run and output, (3) video and live stream.
+- **Possible order** (updated by the first-step decisions): (1) RunBay Server
+  for remote run and output, UI through VNC, and the debug timeline for .NET
+  WPF/WinForms (UI action trail, screenshots at events, exceptions through
+  `netcoredbg` with mapped paths, crash dumps) with its MCP tools; (2)
+  interactive debugging through MCP (breakpoints, stepping); (3) RDP server with
+  per-window RAIL.
 
 - **RunBay on Linux:** the goal needs the desktop app (and its MCP bridge) on
   Linux. Slint and Rust are cross-platform, but the v1 specification is
@@ -163,10 +252,12 @@ Linux workstation                              Windows host
 
 ## Open questions
 
+
 - Should v1 already keep the platform-specific parts behind an abstraction so
   RunBay can later run on Linux, or is Linux support added together with RunBay
   Server?
-- How does the source reach the Windows host (Git pull, sync, shared folder)?
+- In Git mode, should uncommitted changes on Linux be carried to the server (as a
+  patch), or only committed and pushed work?
 - Is a remote debugger attach (DAP) part of the goal, or are build/run/output and
   capture enough?
 - Should agents be able to send input (clicks, keys) to the remote application?
