@@ -91,7 +91,11 @@ export global Icons {
             : name == "description" ? Icons.description
             : name == "settings" ? Icons.settings
             : name == "desktop_windows" ? Icons.full
-            : name == "bubble_chart" ? Icons.bubble : Icons.terminal;
+            : name == "bubble_chart" ? Icons.bubble
+            : name == "code" ? Icons.code
+            : name == "integration_instructions" ? Icons.ide
+            : name == "code_blocks" ? Icons.code-blocks
+            : name == "data_object" ? Icons.data-object : Icons.terminal;
     }
     out property <image> build: @image-url("icons/build.svg");
     out property <image> build-fill: @image-url("icons/build_fill1.svg");
@@ -122,6 +126,10 @@ export global Icons {
     out property <image> compact: @image-url("icons/view_agenda.svg");
     out property <image> bubble: @image-url("icons/bubble_chart.svg");
     out property <image> full: @image-url("icons/desktop_windows.svg");
+    out property <image> code: @image-url("icons/code.svg");
+    out property <image> ide: @image-url("icons/integration_instructions.svg");
+    out property <image> code-blocks: @image-url("icons/code_blocks.svg");
+    out property <image> data-object: @image-url("icons/data_object.svg");
     out property <image> chat: @image-url("icons/chat.svg");
     out property <image> chat-fill: @image-url("icons/chat_fill1.svg");
     out property <image> info: @image-url("icons/info.svg");

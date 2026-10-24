@@ -146,7 +146,8 @@ pointer, which always stays in the default folder next to the executable.
 | --- | --- |
 | `shell` | `auto` (pwsh → powershell), `pwsh`, `powershell` |
 | `kind` | `build`, `run`, `buildRun`, `custom` |
-| `icon` on an action | Optional Material Symbol: `build`, `play_arrow`, `rocket_launch`, `terminal`, `refresh`, `folder`, `folder_open`, `description`, `settings`, `desktop_windows`, `bubble_chart`. Missing/null uses the action kind's default. Independent of the app image. |
+| `icon` on an action | Optional Material Symbol: `build`, `play_arrow`, `rocket_launch`, `terminal`, `refresh`, `folder`, `folder_open`, `description`, `settings`, `desktop_windows`, `bubble_chart`, `code`, `integration_instructions`, `code_blocks`, `data_object` (generic editor/IDE symbols for actions such as opening a project in an IDE; brand logos are not bundled). Missing/null uses the action kind's default. Independent of the app image. |
+| `iconFile` on an action | Optional user-chosen image (png/ico/svg) stored as `actions/<action-id>.icon.<ext>` in the app folder. It replaces `icon` on every action button and menu, keeps its own colors, and is deleted with the action. Brand logos are never bundled; users pick their own (e.g. an editor logo). |
 | `whenRunning` | `ask`, `reject`, `restart`, `parallel` |
 | `retention.mode` | `off`, `last` (with `count`), `forever` |
 | `workingDirectory` / `env` on an action | `null`/empty = inherit from the app; action env overrides app keys with the same name |
@@ -405,7 +406,8 @@ App editor dialog (from Full; Compact/Icon open Full for this):
   `data/apps/<app-id>/icon.<ext>`, replacing the previous icon), working
   directory (folder picker), shell, environment variables (key/value table).
 - Action list: name, action icon (Material Symbols picker with preview and a
-  Default for action choice), script, working directory/env override, `whenRunning`,
+  Default for action choice, plus **Image…** / **Remove image** for a custom
+  png/ico/svg that replaces the symbol), script, working directory/env override, `whenRunning`,
   retention. Any action can be removed; Add action offers missing Build, Run,
   and Build + Run roles plus Custom action. Custom actions can be reordered.
   An empty app shows an Add action explanation instead of action fields.
@@ -531,7 +533,8 @@ overload rendering.
 - UI icons (buttons, toolbars, menus, badges): **Material Symbols Rounded**
   (Google, Apache-2.0). Only the icons in use are added to the repository as SVG
   files, embedded at build time with `@image-url`, and tinted with theme tokens
-  through `colorize`; no icon font is bundled. Filled variants mark active
+  through `colorize`; no icon font is bundled. Custom action images (§4.1) are
+  the only exception and are drawn in their own colors. Filled variants mark active
   states where applicable; action buttons replace their selected idle symbol
   with the spinner or Run lamp defined in §5.4. The
   Apache-2.0 license text ships in `THIRD-PARTY-NOTICES.md` and is listed in the
@@ -773,6 +776,7 @@ Edit apps (confirmation in *Ask first*):
 | `update_app` | Change app fields, order, or group |
 | `delete_app` | Remove an app and its history; **always** confirmed in the GUI, even when *Unrestricted* |
 | `set_app_icon` | Copy an image file (png/ico/svg) as the app icon |
+| `set_action_icon` | Copy an image file (png/ico/svg) as an action's custom icon (`iconFile`); an empty or missing `path` removes it |
 | `set_action` | Create or update an action, including its Material Symbol `icon` (null resets to default), script, working directory, env, `whenRunning`, and retention. `kind` can restore a missing `build`, `run`, or `buildRun` role; without `kind`, reserved new ids `build` / `run` / `build-run` restore that role, while other new ids create custom actions. Existing kinds cannot change, and duplicate standard roles are rejected. |
 | `delete_action` | Remove any action, including a standard role, once the action and any dependent Build + Run have stopped |
 

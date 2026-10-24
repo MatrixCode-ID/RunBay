@@ -25,6 +25,9 @@ export struct ActionButton {
     name: string,
     kind: string,
     icon-name: string,
+    // A custom image replaces the Material Symbol and keeps its own colors.
+    image: image,
+    has-image: bool,
     enabled: bool,
     // "running" while one of its runs is active, otherwise "".
     status: string,

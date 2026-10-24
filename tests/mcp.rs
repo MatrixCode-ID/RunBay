@@ -404,6 +404,33 @@ fn agents_can_remove_and_restore_standard_actions() {
     let (err, folder) = client.call("set_action", json!({"app_id": id, "action_id": "open-dist", "name": "Open dist folder", "icon": "folder_open", "script": "Write-Output 'folder'"}));
     assert!(!err, "{folder}");
     assert_eq!(folder["action"]["icon"], "folder_open");
+
+    // A custom image lives next to the scripts and replaces the symbol.
+    let logo = data.join("logo.svg");
+    std::fs::write(&logo, "<svg xmlns=\"http://www.w3.org/2000/svg\"/>").unwrap();
+    let (err, icon) = client.call(
+        "set_action_icon",
+        json!({"app_id": id, "action_id": "open-dist", "path": logo}),
+    );
+    assert!(!err, "{icon}");
+    assert_eq!(icon["iconFile"], "actions/open-dist.icon.svg");
+    let icon_path = data
+        .join("apps")
+        .join(id)
+        .join("actions/open-dist.icon.svg");
+    assert!(icon_path.exists());
+    let (err, bad) = client.call(
+        "set_action_icon",
+        json!({"app_id": id, "action_id": "open-dist", "path": data.join("logo.txt")}),
+    );
+    assert!(err, "{bad}");
+    let (err, _) = client.call(
+        "delete_action",
+        json!({"app_id": id, "action_id": "open-dist"}),
+    );
+    assert!(!err);
+    assert!(!icon_path.exists());
+
     let (err, completed) = client.call(
         "run_action",
         json!({"app_id": id, "action_id": "build", "wait": true}),

@@ -172,6 +172,10 @@ RunBay will be published as open source under the **MIT license**.
   appear directly as icon buttons in Full, Compact, and Icon. A three-dot menu
   contains only actions that do not fit the available width (user decisions
   2026-10-24). Folder-opening actions support the `folder_open` symbol.
+- Never bundle brand logos (IDEs, editors, products) as action icons. Offer
+  generic Material Symbols (`code`, `integration_instructions`, ...) and let
+  users pick their own image per action (`iconFile`, specification §4.1) (user
+  decision 2026-10-24).
 - Full, Compact, and Icon app cards expose Stop directly while actions are active;
   status badges explain their meaning in tooltips.
 - Settings uses category navigation, a clear Back control, and an automatic-save

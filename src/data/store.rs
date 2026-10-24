@@ -298,6 +298,49 @@ impl Store {
         Ok(())
     }
 
+    /// Copies an image file as the custom icon of an action, replacing the previous one.
+    /// It lives next to the scripts so agent undo snapshots include it. The caller saves
+    /// `app` afterwards.
+    pub fn set_action_icon(
+        &self,
+        app: &mut AppDef,
+        action_id: &str,
+        source: &Path,
+        ext: &str,
+    ) -> Result<()> {
+        let bytes =
+            fs::read(source).with_context(|| format!("cannot read {}", source.display()))?;
+        self.remove_action_icon(app, action_id);
+        let dir = self.app_dir(&app.id);
+        let action = app
+            .action_mut(action_id)
+            .with_context(|| format!("there is no action \"{action_id}\""))?;
+        let name = super::model::action_icon_file(action_id, ext);
+        write_atomic(&dir.join(&name), &bytes)?;
+        action.icon_file = Some(name);
+        Ok(())
+    }
+
+    /// Deletes the custom icon of an action, if it has one. The caller saves `app`.
+    pub fn remove_action_icon(&self, app: &mut AppDef, action_id: &str) {
+        let dir = self.app_dir(&app.id);
+        if let Some(old) = app
+            .action_mut(action_id)
+            .and_then(|action| action.icon_file.take())
+        {
+            let _ = fs::remove_file(dir.join(old));
+        }
+    }
+
+    /// Absolute path of an action's custom icon, if it has one.
+    pub fn action_icon_path(&self, app: &AppDef, action_id: &str) -> Option<PathBuf> {
+        let action = app.action(action_id)?;
+        action
+            .icon_file
+            .as_ref()
+            .map(|f| self.app_dir(&app.id).join(f))
+    }
+
     /// Absolute path of an action's script, if it has one.
     pub fn script_path(&self, app: &AppDef, action_id: &str) -> Option<PathBuf> {
         let action = app.action(action_id)?;

@@ -915,11 +915,17 @@ impl Controller {
                     .all(|k| app.action_of(*k).is_some_and(|a| a.script.is_some())),
                 _ => action.script.is_some(),
             };
+            let image = self
+                .store
+                .action_icon_path(app, &action.id)
+                .and_then(|path| slint::Image::load_from_path(&path).ok());
             ActionButton {
                 id: action.id.clone().into(),
                 name: action.name.clone().into(),
                 kind: format!("{:?}", action.kind).to_lowercase().into(),
                 icon_name: action.icon_name().into(),
+                has_image: image.is_some(),
+                image: image.unwrap_or_default(),
                 enabled,
                 status: if running.is_some() { "running" } else { "" }.into(),
                 busy: active_infos

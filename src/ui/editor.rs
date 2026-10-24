@@ -9,7 +9,8 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use super::{Controller, convert};
 use crate::data::{
-    ACTION_ICONS, ActionDef, ActionKind, AppDef, Group, Groups, Retention, Shell, WhenRunning, ids,
+    ACTION_ICONS, ActionDef, ActionKind, AppDef, Group, Groups, Retention, Shell, WhenRunning,
+    icon_extension, ids,
 };
 use crate::platform;
 use crate::{EditorAction, EditorBridge, EnvRow};
@@ -28,6 +29,8 @@ pub struct Draft {
     scripts: HashMap<String, String>,
     selected: usize,
     icon: Option<IconChange>,
+    /// Pending custom image changes per action id.
+    action_icons: HashMap<String, IconChange>,
     app_env: Rc<VecModel<EnvRow>>,
     action_env: Rc<VecModel<EnvRow>>,
 }
@@ -51,6 +54,7 @@ impl Draft {
         if self.selected < self.app.actions.len() {
             let removed = self.app.actions.remove(self.selected);
             self.scripts.remove(&removed.id);
+            self.action_icons.remove(&removed.id);
             self.selected = self.selected.min(self.app.actions.len().saturating_sub(1));
         }
     }
@@ -183,6 +187,7 @@ impl Controller {
             scripts,
             selected: 0,
             icon: None,
+            action_icons: HashMap::new(),
         };
         let ui = self.ui();
         let g = ui.global::<EditorBridge>();
@@ -252,6 +257,17 @@ impl Controller {
         g.set_initial(convert::initial(&g.get_name()).into());
     }
 
+    /// The custom image of a draft action, including a pending change.
+    fn draft_action_image(&self, d: &Draft, action: &ActionDef) -> Option<slint::Image> {
+        match d.action_icons.get(&action.id) {
+            Some(IconChange::Set(path)) => slint::Image::load_from_path(path).ok(),
+            Some(IconChange::Remove) => None,
+            None => action.icon_file.as_ref().and_then(|file| {
+                slint::Image::load_from_path(&self.store.app_dir(&d.app.id).join(file)).ok()
+            }),
+        }
+    }
+
     /// Shows the selected action of the draft.
     fn load_selected_action(&self) {
         let ui = self.ui();
@@ -262,12 +278,17 @@ impl Controller {
             d.app
                 .actions
                 .iter()
-                .map(|a| EditorAction {
-                    id: a.id.clone().into(),
-                    name: a.name.clone().into(),
-                    kind: format!("{:?}", a.kind).to_lowercase().into(),
-                    icon_name: a.icon_name().into(),
-                    has_script: d.scripts.get(&a.id).is_some_and(|s| !s.trim().is_empty()),
+                .map(|a| {
+                    let image = self.draft_action_image(d, a);
+                    EditorAction {
+                        id: a.id.clone().into(),
+                        name: a.name.clone().into(),
+                        kind: format!("{:?}", a.kind).to_lowercase().into(),
+                        icon_name: a.icon_name().into(),
+                        has_image: image.is_some(),
+                        image: image.unwrap_or_default(),
+                        has_script: d.scripts.get(&a.id).is_some_and(|s| !s.trim().is_empty()),
+                    }
                 })
                 .collect::<Vec<_>>(),
         )));
@@ -278,6 +299,7 @@ impl Controller {
             g.set_selected_action(-1);
             g.set_action_is_custom(false);
             g.set_action_has_script_file(false);
+            g.set_action_has_image(false);
             g.set_action_name(SharedString::new());
             g.set_script(SharedString::new());
             d.action_env.set_vec(Vec::new());
@@ -292,6 +314,9 @@ impl Controller {
                 .and_then(|icon| ACTION_ICONS.iter().position(|(name, _)| name == icon))
                 .map_or(0, |i| i as i32 + 1),
         );
+        let image = self.draft_action_image(d, action);
+        g.set_action_has_image(image.is_some());
+        g.set_action_image(image.unwrap_or_default());
         g.set_script(
             d.scripts
                 .get(&action.id)
@@ -392,6 +417,42 @@ impl Controller {
                 d.icon = Some(IconChange::Remove);
             }
             c.refresh_editor_icon();
+        }));
+        g.on_choose_action_image(with(|c| {
+            if let Err(e) = c.commit_action() {
+                return c.editor_error(e);
+            }
+            let owner = convert::hwnd(c.ui().window());
+            if let Some(path) = platform::dialogs::pick_file(
+                owner,
+                "Choose an action icon",
+                "Images (png, ico, svg)",
+                "*.png;*.ico;*.svg",
+            ) {
+                if icon_extension(&path).is_none() {
+                    return c.editor_error(anyhow::anyhow!(
+                        "the icon must be a .png, .ico, or .svg file"
+                    ));
+                }
+                if let Some(d) = c.editor.borrow_mut().as_mut()
+                    && let Some(action) = d.app.actions.get(d.selected)
+                {
+                    d.action_icons
+                        .insert(action.id.clone(), IconChange::Set(path));
+                }
+                c.load_selected_action();
+            }
+        }));
+        g.on_remove_action_image(with(|c| {
+            if let Err(e) = c.commit_action() {
+                return c.editor_error(e);
+            }
+            if let Some(d) = c.editor.borrow_mut().as_mut()
+                && let Some(action) = d.app.actions.get(d.selected)
+            {
+                d.action_icons.insert(action.id.clone(), IconChange::Remove);
+            }
+            c.load_selected_action();
         }));
         g.on_choose_folder(with(|c| {
             let owner = convert::hwnd(c.ui().window());
@@ -609,7 +670,9 @@ impl Controller {
             .iter()
             .map(|a| {
                 let mut a = a.clone();
-                a.script = previous.action(&a.id).and_then(|p| p.script.clone());
+                let old = previous.action(&a.id);
+                a.script = old.and_then(|p| p.script.clone());
+                a.icon_file = old.and_then(|p| p.icon_file.clone());
                 a
             })
             .collect();
@@ -632,22 +695,35 @@ impl Controller {
                 self.store.write_script(&mut app, action_id, &text)?;
             }
         }
-        // Scripts of removed actions.
+        // Scripts and images of removed actions.
         for old in &previous.actions {
-            if app.action(&old.id).is_none()
-                && let Some(path) = self.store.script_path(&previous, &old.id)
-            {
-                let _ = std::fs::remove_file(path);
+            if app.action(&old.id).is_none() {
+                if let Some(path) = self.store.script_path(&previous, &old.id) {
+                    let _ = std::fs::remove_file(path);
+                }
+                if let Some(path) = self.store.action_icon_path(&previous, &old.id) {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+        }
+        for (action_id, change) in &d.action_icons {
+            if app.action(action_id).is_none() {
+                continue;
+            }
+            match change {
+                IconChange::Set(path) => {
+                    let ext = icon_extension(path)
+                        .context("the icon must be a .png, .ico, or .svg file")?;
+                    self.store
+                        .set_action_icon(&mut app, action_id, path, &ext)?;
+                }
+                IconChange::Remove => self.store.remove_action_icon(&mut app, action_id),
             }
         }
         match d.icon.clone() {
             Some(IconChange::Set(path)) => {
-                let ext = path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(str::to_ascii_lowercase)
-                    .filter(|e| matches!(e.as_str(), "png" | "ico" | "svg"))
-                    .context("the icon must be a .png, .ico, or .svg file")?;
+                let ext =
+                    icon_extension(&path).context("the icon must be a .png, .ico, or .svg file")?;
                 self.store.set_icon(&mut app, &path, &ext)?;
             }
             Some(IconChange::Remove) => {
@@ -683,6 +759,7 @@ mod tests {
             scripts: HashMap::from([("build".into(), "old script".into())]),
             selected: 0,
             icon: None,
+            action_icons: HashMap::new(),
             app_env: Rc::new(VecModel::default()),
             action_env: Rc::new(VecModel::default()),
         };

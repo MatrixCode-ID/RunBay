@@ -85,7 +85,33 @@ pub const ACTION_ICONS: &[(&str, &str)] = &[
     ("settings", "Settings"),
     ("desktop_windows", "Desktop"),
     ("bubble_chart", "Bubbles"),
+    ("code", "Code editor"),
+    ("integration_instructions", "IDE"),
+    ("code_blocks", "Code blocks"),
+    ("data_object", "Data object"),
 ];
+
+/// Image formats accepted for app and action icons.
+pub const ICON_EXTENSIONS: &[&str] = &["png", "ico", "svg"];
+
+/// The lowercase icon extension of `path`, if it is an accepted image format.
+pub fn icon_extension(path: &std::path::Path) -> Option<String> {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .filter(|e| ICON_EXTENSIONS.contains(&e.as_str()))
+}
+
+/// The file name of an action's custom image, relative to the app folder.
+pub fn action_icon_file(action_id: &str, ext: &str) -> String {
+    format!("actions/{action_id}.icon.{ext}")
+}
+
+fn is_action_icon_file(action_id: &str, file: &str) -> bool {
+    ICON_EXTENSIONS
+        .iter()
+        .any(|ext| file == action_icon_file(action_id, ext))
+}
 
 /// One action of an app, stored inside `app.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -100,6 +126,10 @@ pub struct ActionDef {
     /// Material Symbol name, or `None` to use the action kind's default icon.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// User-chosen image relative to the app folder (`actions/<id>.icon.<ext>`). It
+    /// replaces `icon` on buttons; brand logos are never bundled, so users add their own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_file: Option<String>,
     /// Script path relative to the app folder (`actions/<id>.ps1`); `None` for
     /// `buildRun` and for build/run actions without a script.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -162,6 +192,7 @@ impl ActionDef {
             name: name.into(),
             kind,
             icon: None,
+            icon_file: None,
             script: None,
             working_directory: None,
             env: BTreeMap::new(),
@@ -238,6 +269,11 @@ impl AppDef {
                 && !ACTION_ICONS.iter().any(|(name, _)| name == icon)
             {
                 return Err(format!("unknown action icon \"{icon}\""));
+            }
+            if let Some(file) = &action.icon_file
+                && !is_action_icon_file(&action.id, file)
+            {
+                return Err(format!("invalid action icon file \"{file}\""));
             }
             if !super::ids::is_slug(&action.id) {
                 return Err(format!("invalid action id \"{}\"", action.id));
@@ -547,6 +583,28 @@ mod tests {
         app.actions[0].icon = None;
         app.validate().unwrap();
         assert_eq!(app.actions[0].icon_name(), "build");
+    }
+
+    #[test]
+    fn action_icon_files_stay_next_to_their_action() {
+        let mut app = AppDef::new("a", "A", &Settings::default());
+        app.actions[0].icon_file = Some(action_icon_file("build", "png"));
+        app.validate().unwrap();
+        let json = serde_json::to_string(&app).unwrap();
+        assert!(json.contains("\"iconFile\":\"actions/build.icon.png\""));
+        for bad in [
+            "actions/run.icon.png",
+            "../logo.png",
+            "actions/build.icon.exe",
+        ] {
+            app.actions[0].icon_file = Some(bad.into());
+            assert!(app.validate().is_err(), "{bad}");
+        }
+        assert_eq!(
+            icon_extension(std::path::Path::new("C:/x/Logo.SVG")).as_deref(),
+            Some("svg")
+        );
+        assert!(icon_extension(std::path::Path::new("logo.txt")).is_none());
     }
 
     #[test]

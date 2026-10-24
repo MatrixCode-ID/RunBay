@@ -276,6 +276,8 @@ export component SymbolButton inherits Rectangle {
     in property <bool> busy;
     in property <length> size: 36px;
     in property <length> icon-size: 20px;
+    // False for full-color images such as custom action icons.
+    in property <bool> colorize-icon: true;
     in property <brush> icon-color: style == "filled" ? Theme.on-primary
         : style == "tertiary" ? Theme.on-tertiary
         : style == "tonal" ? Theme.on-secondary-container
@@ -318,7 +320,7 @@ export component SymbolButton inherits Rectangle {
             source: icon;
             width: icon-size;
             height: icon-size;
-            colorize: icon-color;
+            colorize: colorize-icon ? icon-color : transparent;
             y: (parent.height - self.height) / 2;
         }
         if root.status == "running": StatusBadge {
@@ -534,7 +536,8 @@ export component ActionBar inherits Rectangle {
     for action[index] in actions: SymbolButton {
         visible: index < root.direct-count;
         x: index * (root.size + root.gap);
-        icon: Icons.action-icon(action.icon-name);
+        icon: action.has-image ? action.image : Icons.action-icon(action.icon-name);
+        colorize-icon: !action.has-image;
         tooltip: action.name;
         size: root.size;
         icon-size: 18px;
@@ -578,11 +581,11 @@ export component ActionBar inherits Rectangle {
                         padding-right: 8px;
                         spacing: 8px;
                         Image {
-                            source: Icons.action-icon(action.icon-name);
+                            source: action.has-image ? action.image : Icons.action-icon(action.icon-name);
                             width: 18px;
                             height: 18px;
                             y: (parent.height - self.height) / 2;
-                            colorize: Theme.on-surface-variant;
+                            colorize: action.has-image ? transparent : Theme.on-surface-variant;
                         }
                         Text {
                             text: action.name;

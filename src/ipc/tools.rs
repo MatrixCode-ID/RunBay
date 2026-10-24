@@ -123,6 +123,7 @@ pub fn describe(host: &Host, tool: &str, args: &Value) -> String {
         "update_app" => format!("Change {} ({})", app(), fields()),
         "delete_app" => format!("Remove {} and its whole history", app()),
         "set_app_icon" => format!("Change the icon of {}", app()),
+        "set_action_icon" => format!("Change the icon of {} › {}", app(), action()),
         "set_action" => format!("Change {} › {} ({})", app(), action(), fields()),
         "delete_action" => format!("Remove {} › {}", app(), action()),
         "update_settings" => format!("Change settings ({})", fields()),
@@ -173,6 +174,7 @@ pub fn execute(
         "update_app" => update_app(host, agent, args),
         "delete_app" => delete_app(host, agent, args),
         "set_app_icon" => set_app_icon(host, agent, args),
+        "set_action_icon" => set_action_icon(host, agent, args),
         "set_action" => set_action(host, agent, args),
         "delete_action" => delete_action(host, agent, args),
         "update_settings" => update_settings(host, agent, args),
@@ -619,11 +621,7 @@ fn delete_app(host: &Host, agent: &str, args: &Value) -> Result<Value> {
 fn set_app_icon(host: &Host, agent: &str, args: &Value) -> Result<Value> {
     let id = arg_str(args, "app_id")?;
     let source = std::path::PathBuf::from(arg_str(args, "path")?);
-    let ext = source
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_ascii_lowercase)
-        .filter(|e| matches!(e.as_str(), "png" | "ico" | "svg"))
+    let ext = crate::data::icon_extension(&source)
         .context("the icon must be a .png, .ico, or .svg file")?;
     let mut app = load_app(host, id)?;
     let before = host.snapshot(id)?;
@@ -638,6 +636,38 @@ fn set_app_icon(host: &Host, agent: &str, args: &Value) -> Result<Value> {
         },
     );
     Ok(json!({ "icon": app.icon }))
+}
+
+fn set_action_icon(host: &Host, agent: &str, args: &Value) -> Result<Value> {
+    let app_id = arg_str(args, "app_id")?;
+    let action_id = arg_str(args, "action_id")?;
+    let mut app = load_app(host, app_id)?;
+    let action_name = app
+        .action(action_id)
+        .with_context(|| format!("{} has no action \"{action_id}\"", app.name))?
+        .name
+        .clone();
+    let before = host.snapshot(app_id)?;
+    match opt_str(args, "path").filter(|p| !p.trim().is_empty()) {
+        Some(path) => {
+            let source = std::path::PathBuf::from(path);
+            let ext = crate::data::icon_extension(&source)
+                .context("the icon must be a .png, .ico, or .svg file")?;
+            host.store
+                .set_action_icon(&mut app, action_id, &source, &ext)?;
+        }
+        None => host.store.remove_action_icon(&mut app, action_id),
+    }
+    host.store.save_app(&app)?;
+    host.changed(
+        agent,
+        format!("{agent} changed the icon of {} › {action_name}", app.name),
+        Undo::App {
+            app_id: app_id.to_string(),
+            before: Some(before),
+        },
+    );
+    Ok(json!({ "iconFile": app.action(action_id).and_then(|a| a.icon_file.clone()) }))
 }
 
 fn set_action(host: &Host, agent: &str, args: &Value) -> Result<Value> {
@@ -690,6 +720,7 @@ fn set_action(host: &Host, agent: &str, args: &Value) -> Result<Value> {
             name,
             kind,
             icon: None,
+            icon_file: None,
             script: None,
             working_directory: None,
             env: BTreeMap::new(),
@@ -785,6 +816,7 @@ fn delete_action(host: &Host, agent: &str, args: &Value) -> Result<Value> {
     if action.script.is_some() {
         host.store.write_script(&mut app, action_id, "")?;
     }
+    host.store.remove_action_icon(&mut app, action_id);
     app.actions.retain(|a| a.id != action_id);
     host.store.save_app(&app)?;
     host.changed(

@@ -192,6 +192,17 @@ pub const TOOLS: &[ToolDef] = &[
         },
     },
     ToolDef {
+        name: "set_action_icon",
+        description: "Copy an image file (png, ico, or svg) as the custom icon of an action, for example an editor logo from the user's machine. It replaces the action's Material Symbol and keeps its own colors. An empty or missing path removes the image.",
+        read_only: false,
+        schema: || {
+            object(
+                json!({ "app_id": { "type": "string" }, "action_id": { "type": "string" }, "path": { "type": "string" } }),
+                &["app_id", "action_id"],
+            )
+        },
+    },
+    ToolDef {
         name: "set_action",
         description: "Create or update an action. Use kind to restore a missing build, run, or buildRun role; without kind, reserved ids build/run/build-run restore that role and other new ids create custom actions. Existing kinds cannot change. The script is PowerShell; an empty script removes it. working_directory/env override the app's.",
         read_only: false,
@@ -202,7 +213,7 @@ pub const TOOLS: &[ToolDef] = &[
                     "action_id": { "type": "string" },
                     "kind": { "type": "string", "enum": ["build", "run", "buildRun", "custom"] },
                     "name": { "type": "string" },
-                    "icon": { "type": ["string", "null"], "description": "Action Material Symbol; null restores the default.", "enum": [null, "", "build", "play_arrow", "rocket_launch", "terminal", "refresh", "folder", "folder_open", "description", "settings", "desktop_windows", "bubble_chart"] },
+                    "icon": { "type": ["string", "null"], "description": "Action Material Symbol; null restores the default.", "enum": [null, "", "build", "play_arrow", "rocket_launch", "terminal", "refresh", "folder", "folder_open", "description", "settings", "desktop_windows", "bubble_chart", "code", "integration_instructions", "code_blocks", "data_object"] },
                     "script": { "type": "string" },
                     "working_directory": { "type": ["string", "null"] },
                     "env": env_schema(),
