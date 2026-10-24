@@ -1,0 +1,13 @@
+# Rust build output
+/target/
+
+# Runtime data created next to the executable
+/data/
+
+# Editors and OS
+.vs/
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
