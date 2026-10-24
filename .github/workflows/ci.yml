@@ -1,10 +1,11 @@
 name: CI
 
-# Format, lint, and test on every push to work-bench (private repository) and main (public
-# repository), and on pull requests. Releases are handled by release.yml.
+# Format, lint, and test on every push to main and on pull requests. work-bench is not
+# checked by CI (user decision 2026-10-24); run the checks locally there.
+# Releases are handled by release.yml.
 on:
   push:
-    branches: [work-bench, main]
+    branches: [main]
   pull_request: {}
   workflow_dispatch: {}
 

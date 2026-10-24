@@ -17,7 +17,7 @@
 | Platform abstraction | **None.** Implement Windows directly; no traits prepared for Linux. Refactoring for Linux belongs to the RunBay Server work later. |
 | Linux build | **Not a goal for v1.** The crate builds and is tested on Windows only; no `#[cfg(windows)]` gating to make it compile on Linux. Linux support starts with the RunBay Server work. Execute this plan on a Windows machine. |
 | Commits | Commit on `work-bench` at the end of every milestone and push to `private`. No merge to `main` and no release, **except in M5** (below). |
-| Tests | `cargo test` (unit + integration, including real PowerShell scripts) and a CI workflow running build, clippy, and tests on every push to `work-bench` and `main`. |
+| Tests | `cargo test` (unit + integration, including real PowerShell scripts) and a CI workflow running build, clippy, and tests on every push to `main` (and pull requests). Changed 2026-10-24: no CI on `work-bench`; checks there run locally. |
 | Visual tests | **Allowed** during execution: the executor may start RunBay and use screenshots / computer use to check the UI. |
 | Slint renderer | **femtovg** (OpenGL), with Slint's **software renderer** as fallback when OpenGL is unavailable. |
 | RunBay logo | The executor designs a simple SVG logo in Material 3 style (replaceable later). |
@@ -222,7 +222,8 @@ No release in M6 (later releases happen on the user's request).
 
 ## 6. CI and release interaction
 
-- `ci.yml` runs on `work-bench` (private repository) and `main` (public repository).
+- `ci.yml` runs on `main` (public repository) and pull requests only; `work-bench` is checked
+  locally (user decision 2026-10-24).
 - `release.yml` stays as is: it only publishes when a push to `main` changes `src/**`,
   `Cargo.toml`, or `Cargo.lock` and exactly one release note is untagged.
 
@@ -348,7 +349,8 @@ Release executable size: 27 MB.
 
 ### Remaining work
 
-1. M5 §3.3–3.5: confirm a green CI run, merge `work-bench` into `main`, push `main` to
+1. M5 §3.3–3.5 (postponed by the user, 2026-10-24: no merge to `main` yet; CI runs only
+   on `main`, so run fmt, clippy, and tests locally first): merge `work-bench` into `main`, push `main` to
    `origin`, confirm the `v1.0.0-alpha.1` release with `RunBay.exe` and `SHA256SUMS`;
    bump to `1.0.0-alpha.2` with its release note, release again, and test the real
    update alpha.1 → alpha.2 from GitHub.
