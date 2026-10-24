@@ -1,8 +1,8 @@
 # Plan: Select and copy text in the output
 
 - **Date:** 2026-10-24
-- **Status:** not executed. All decisions below are final (confirmed by the user on
-  2026-10-24); execution needs no further questions.
+- **Status:** executed on 2026-10-24. Automated checks passed; visual validation
+  remains with the user as agreed below.
 - **Idea:** [doc/ideas/output-text-selection.md](../../doc/ideas/output-text-selection.md)
 - **Specification:** §5.3 (on-screen output), §6.2 (Compact), §6.3 (Icon).
 
@@ -94,3 +94,35 @@ Compact/Icon output popups, the way a console does.
 All steps are done, the checks pass, the specification and release note candidate are
 updated, the plan is in `plan/executed/` with its report, and the change is committed
 on `work-bench`.
+
+## 7. Execution report (2026-10-24)
+
+- Added a shared, virtualized `OutputView` for Full and Compact/Icon popups,
+  retaining colored/bold spans and drawing selection behind them. Hit testing
+  and horizontal content width use a hidden monospace glyph measurement.
+- Added a pure Rust selection model and cached ANSI-free lines with stable
+  run indices. Mouse selection, word/line selection, Shift+click, keyboard
+  extension, copying, Select all, and clearing are wired through `OutputBridge`.
+  Only rows whose highlighted columns change are notified.
+- Selection pauses follow mode. Clearing resumes at the bottom; dragging
+  beyond the visible edges scrolls with a timer active only during the drag.
+  Run changes and Clear view reset selection; buffer trimming clamps endpoints.
+- Output snapshots include their first run index and omit already displayed
+  lines, so opening a run during batched event delivery cannot duplicate rows
+  or corrupt the selected range. Popups now use the configured output line
+  limit, matching Full and Select all over retained output.
+- Updated specification §§5.3, 6.2, and 6.3 and the alpha.2 candidate. Before
+  implementation, compared the stale alpha.1 candidate with the released note:
+  preserved only unreleased entries in alpha.2 and removed the stale candidate.
+  Updated release rules in `CLAUDE.md`, the release guide, and §14.2 following
+  the user's instructions to maintain RNC continuously and recreate it as soon
+  as the previous note moves to RN.
+- Validation: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+  and `cargo test` passed (76 tests, including five selection unit tests).
+  Used the existing MSVC environment setup and external Cargo target directory.
+- Visual testing was not performed, as agreed. The user checklist in §5 remains
+  available for Full, Compact, Icon, light/dark, and live output.
+- Known limitation: wide CJK/emoji characters count as one column, as planned.
+  Select all covers retained output; logs on disk remain complete.
+- The implementation commit excludes changes already present before this task.
+  No push is performed.

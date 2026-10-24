@@ -2,13 +2,14 @@
 
 import { ListView, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { SymbolButton, StatusBadge, AgentChip, Avatar } from "components.slint";
+import { SymbolButton, StatusBadge, AgentChip, Avatar, OutputView, OutputBridge } from "components.slint";
 import { Span, OutputRow, ActionButton, RunRow, AppRow } from "types.slint";
 
 // Data and callbacks shared by the Compact window and the Icon popup.
 export global MiniBridge {
     in-out property <[AppRow]> apps;
     in-out property <[OutputRow]> output;
+    in-out property <int> output-columns;
     in-out property <string> output-title;
     in-out property <string> output-status;
     in-out property <bool> output-busy;
@@ -26,24 +27,6 @@ export global MiniBridge {
     callback switch-mode(string);
     callback version-clicked();
     callback undo-clicked();
-}
-
-component MiniOutputLine inherits Rectangle {
-    in property <OutputRow> line;
-    height: 16px;
-    HorizontalLayout {
-        alignment: start;
-        padding-left: 8px;
-        for span in line.spans: Text {
-            text: span.text;
-            color: span.colored ? span.color : line.stderr ? Theme.console-error : Theme.console-text;
-            font-family: Theme.mono-font;
-            font-size: 12px;
-            font-weight: span.bold ? 700 : 400;
-            wrap: no-wrap;
-            vertical-alignment: center;
-        }
-    }
 }
 
 // The live output of an app's last run, with Stop and Open in Full.
@@ -90,11 +73,14 @@ component OutputCard inherits Rectangle {
             background: Theme.console-background;
             border-radius: Theme.corner-medium;
             clip: true;
-            list := ListView {
-                for row in MiniBridge.output: MiniOutputLine { line: row; }
-                changed content-height => {
-                    self.content-y = min(0px, self.visible-height - self.content-height);
-                }
+            OutputView {
+                rows: MiniBridge.output;
+                columns: MiniBridge.output-columns;
+                popup: true;
+                generation: OutputBridge.popup-generation;
+                font-size: 12px;
+                row-height: 16px;
+                side-padding: 8px;
             }
         }
     }

@@ -241,7 +241,25 @@ Different apps may always run in parallel.
   lines leave the screen, but the log on disk stays complete. The limit can be
   changed in settings.
 - Auto-scroll follows the output; it pauses when the user scrolls up and resumes
-  when scrolled back to the bottom.
+  when scrolled back to the bottom with no selection. A selection pauses follow
+  mode; clearing it resumes following only when the view is at the bottom.
+- The Full output panel and Compact/Icon output popups share mouse and keyboard
+  selection while preserving ANSI span colors. Drag selects across lines,
+  Shift+click extends from the anchor, double-click selects a word (letters,
+  digits, `_`, `-`, `.`, `/`, `\`, `:`), triple-click selects a line, and a plain
+  click clears the selection. Dragging beyond the view auto-scrolls using a
+  timer that runs only during the drag.
+- With output focused, Ctrl+C / Ctrl+Insert copy, Ctrl+A selects all retained
+  lines, Shift+arrows / Shift+Home / Shift+End extend the focus, and Escape clears
+  the selection. Ctrl+C without a selection does nothing and never stops a run.
+  Right-click offers Copy (enabled with a selection) and Select all.
+- Copying a selection strips ANSI codes and joins lines with `\r\n`; an end
+  position at column zero excludes that empty final line. Selection positions
+  use stable run-line indices and character columns, clamped when the ring
+  buffer discards lines. Switching runs or clearing the view clears selection.
+- Selection uses a theme color behind the original spans and a measured
+  monospace character width for hit testing and horizontal scrolling. CJK and
+  emoji are treated as one column; wide-character handling is a known limitation.
 - Output panel actions: Stop, Copy all, Open log file, Clear view.
 
 ### 5.4 Status badges
@@ -312,7 +330,9 @@ A small resizable window (default about 320×420).
 - List of apps (icon, name, badge) with Build / Run / Build+Run action icons
   and a custom action menu.
 - **Message icon per app**: opens a popup with the output of that app's last
-  run, live while running, with Stop and Open in Full buttons.
+  run, live while running, with Stop and Open in Full buttons. Its output uses
+  the same selection, copying, and follow-mode controls as Full (§5.3), with the
+  configured on-screen line limit.
 - Buttons: always on top (pin), switch mode.
 - **Version**: the RunBay version is shown in a small footer of the window,
   with the *Update ready* badge next to it when an update is ready; clicking it
@@ -331,6 +351,7 @@ A small resizable window (default about 320×420).
   snackbars are a separate small frameless window next to the icon; the icon
   and that window do not appear in the taskbar.
 - The aggregated badge is shown in a corner of the icon.
+- The message icon opens the same selectable output popup as Compact (§5.3).
 - Right-click: switch mode, always on top, icon size, exit.
 
 ### 6.4 Always on top
@@ -503,7 +524,12 @@ The runner works on its own thread; the UI only receives events through
   Release. Format and rules: [doc/ReleaseNote/README.md](ReleaseNote/README.md).
   The note of the next version is prepared in `doc/ReleaseNote-Candidate/` and
   moved to `doc/ReleaseNote/` to release it; the candidate folder does not start
-  the Release workflow.
+  the Release workflow. Immediately after moving it, create a fresh candidate
+  with the same stage/channel number raised by one (or PATCH + 1 after a final
+  release), with `Previous` pointing to that release. Released notes stay only
+  in `doc/ReleaseNote/`. Every bug update, user-facing code fix, or new feature
+  updates and tidies the candidate in the same change, including its summary
+  and categories, so publication needs only a final consistency check.
 - Publishing is automatic: the [Release workflow](../.github/workflows/release.yml)
   runs only on a push to `main` that changes `doc/ReleaseNote/**`; other pushes
   do not start it. It runs CI first, then releases the single release note that has no `v<version>` tag

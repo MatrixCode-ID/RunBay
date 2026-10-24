@@ -27,7 +27,7 @@ pub fn initial(name: &str) -> String {
 }
 
 /// Converts one output line into styled spans.
-pub fn output_row(parser: &mut AnsiParser, line: &OutputLine, dark: bool) -> OutputRow {
+pub fn output_row(parser: &mut AnsiParser, line: &OutputLine, dark: bool, index: u64) -> OutputRow {
     let spans: Vec<Span> = parser
         .parse_line(&line.text)
         .into_iter()
@@ -48,6 +48,14 @@ pub fn output_row(parser: &mut AnsiParser, line: &OutputLine, dark: bool) -> Out
         })
         .collect();
     OutputRow {
+        run_index: index.min(i32::MAX as u64) as i32,
+        plain_text: spans
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<String>()
+            .into(),
+        selected_from: -1,
+        selected_to: -1,
         spans: ModelRc::new(VecModel::from(spans)),
         stderr: line.stderr,
     }

@@ -2,28 +2,9 @@
 
 import { ListView, LineEdit, TextEdit, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, TooltipContent } from "components.slint";
+import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, TooltipContent, OutputView } from "components.slint";
 import { Span, OutputRow, ActionButton, RunRow, AppRow } from "types.slint";
 import { EditorPage, SettingsPage, HistoryFlyout, AboutDialog } from "pages.slint";
-
-component OutputLineView inherits Rectangle {
-    in property <OutputRow> line;
-    height: 18px;
-    HorizontalLayout {
-        alignment: start;
-        padding-left: 12px;
-        padding-right: 12px;
-        for span in line.spans: Text {
-            text: span.text;
-            color: span.colored ? span.color : line.stderr ? Theme.console-error : Theme.console-text;
-            font-family: Theme.mono-font;
-            font-size: Theme.mono-size;
-            font-weight: span.bold ? 700 : 400;
-            wrap: no-wrap;
-            vertical-alignment: center;
-        }
-    }
-}
 
 component MenuItem inherits Rectangle {
     in property <string> text;
@@ -340,16 +321,14 @@ export component MainWindow inherits Window {
     callback agent-ask-answer(string);
     callback undo-clicked();
 
-    // Keeps the output scrolled to the end until the user scrolls up.
-    property <bool> follow: true;
+    in property <int> output-generation;
 
     public function set-dark(dark: bool) {
         Palette.color-scheme = dark ? ColorScheme.dark : ColorScheme.light;
     }
 
     public function scroll-to-end() {
-        follow = true;
-        output-list.content-y = min(0px, output-list.visible-height - output-list.content-height);
+        output-view.scroll-to-end();
     }
 
     HorizontalLayout {
@@ -597,17 +576,10 @@ export component MainWindow inherits Window {
                 background: Theme.console-background;
                 border-radius: Theme.corner-large;
                 clip: true;
-                output-list := ListView {
-                    content-width: max(self.visible-width, output-columns * 8px + 24px);
-                    for row in output: OutputLineView { line: row; }
-                    changed content-height => {
-                        if (follow) {
-                            self.content-y = min(0px, self.visible-height - self.content-height);
-                        }
-                    }
-                    changed content-y => {
-                        follow = self.content-y <= self.visible-height - self.content-height + 4px;
-                    }
+                output-view := OutputView {
+                    rows: root.output;
+                    columns: root.output-columns;
+                    generation: root.output-generation;
                 }
             }
             Rectangle { height: 12px; }

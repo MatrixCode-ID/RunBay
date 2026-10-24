@@ -7,6 +7,8 @@ mod editor;
 mod history;
 mod lifecycle;
 mod modes;
+mod output_selection;
+mod selection;
 mod settings;
 mod updates;
 
@@ -125,6 +127,7 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
     controller.bind_history();
     controller.bind_close();
     controller.bind_modes();
+    controller.bind_selection();
     controller.bind_updates();
     controller.restore_full_window();
     controller.state.borrow_mut().mode = controller.store.load_window_state().mode;
@@ -184,6 +187,8 @@ struct State {
     /// The run shown in the output panel.
     displayed: Option<String>,
     output: Rc<VecModel<OutputRow>>,
+    selection: selection::Selection,
+    selection_click: Option<(std::time::Instant, bool, i32, i32, u8)>,
     parser: AnsiParser,
     columns: usize,
     /// A request waiting for the "ask" dialog.
@@ -312,9 +317,13 @@ impl Controller {
                 if let Some(c) = c() {
                     let mut st = c.state.borrow_mut();
                     st.output.set_vec(Vec::new());
+                    let next = st.selection.next();
+                    st.selection.reset(next);
                     st.columns = 0;
                     drop(st);
                     c.ui().set_output_columns(0);
+                    c.refresh_selection(false);
+                    c.ui().invoke_scroll_to_end();
                 }
             });
         }
@@ -595,12 +604,12 @@ impl Controller {
                 self.refresh_header();
                 self.refresh_history();
             }
-            RunEvent::Output { run_id, lines, .. } => {
+            RunEvent::Output { run_id, .. } => {
                 if self.state.borrow().displayed.as_deref() == Some(run_id.as_str()) {
-                    self.append_lines(&lines);
+                    self.append_pending_lines(&run_id, false);
                 }
                 if self.state.borrow().popup.run_id.as_deref() == Some(run_id.as_str()) {
-                    self.append_popup_lines(&lines);
+                    self.append_pending_lines(&run_id, true);
                 }
             }
             RunEvent::PhaseChanged(_) => {
@@ -633,11 +642,15 @@ impl Controller {
         let rows: Vec<OutputRow> = lines
             .iter()
             .map(|line| {
-                columns = columns.max(line.text.chars().count().min(2000));
-                convert::output_row(&mut st.parser, line, dark)
+                let index = st.selection.next();
+                let row = convert::output_row(&mut st.parser, line, dark, index);
+                columns = columns.max(row.plain_text.chars().count());
+                st.selection.lines.push_back(row.plain_text.to_string());
+                row
             })
             .collect();
         st.columns = columns;
+        st.selection.trim(limit);
         let model = st.output.clone();
         drop(st);
         for row in rows {
@@ -648,6 +661,7 @@ impl Controller {
             model.remove(0);
         }
         self.ui().set_output_columns(columns as i32);
+        self.refresh_selection(false);
     }
 
     /// Shows the output of a run (live when active) in the output panel.
@@ -657,13 +671,15 @@ impl Controller {
             st.displayed = run_id.clone();
             st.output.set_vec(Vec::new());
             st.parser = AnsiParser::new();
+            st.selection.reset(0);
             st.columns = 0;
             st.displayed_log = None;
         }
         self.ui().set_output_columns(0);
         if let Some(id) = &run_id {
             if let Some(run) = self.manager.find(id) {
-                let (_, lines) = run.lines();
+                let (first, lines) = run.lines();
+                self.state.borrow_mut().selection.reset(first);
                 self.append_lines(&lines);
             } else if let Some((record, path)) = self.find_record(id) {
                 let _ = record;
@@ -678,6 +694,7 @@ impl Controller {
                             .collect();
                         let limit = self.settings.read().unwrap().output_line_limit as usize;
                         let skip = lines.len().saturating_sub(limit);
+                        self.state.borrow_mut().selection.reset(skip as u64);
                         self.append_lines(&lines[skip..]);
                     }
                     Err(e) => self.snackbar(format!("cannot read {}: {e}", path.display())),
@@ -686,6 +703,9 @@ impl Controller {
             }
         }
         self.refresh_header();
+        self.refresh_selection(false);
+        self.ui()
+            .set_output_generation(self.ui().get_output_generation().wrapping_add(1));
         self.ui().invoke_scroll_to_end();
     }
 

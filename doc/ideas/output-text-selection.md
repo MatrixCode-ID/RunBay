@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-24
 - **Status:** planned
-- **Plan:** [plan/unexecuted/output-text-selection.md](../../plan/unexecuted/output-text-selection.md)
+- **Plan:** [plan/executed/output-text-selection.md](../../plan/executed/output-text-selection.md)
 
 ## Context
 
@@ -56,3 +56,9 @@ no extra elements are created. It fits well with the planned attribute rendering
 ## Open questions
 
 - None. Execution decisions (release note, visual test, commit) are in the plan.
+
+## Execution
+
+- 2026-10-24: Implemented the plan, including Full/Compact/Icon selection,
+  copying, follow-mode pause, and drag auto-scroll. Automated checks passed;
+  the agreed visual checklist remains for the user.

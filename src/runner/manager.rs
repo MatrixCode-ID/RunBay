@@ -197,6 +197,21 @@ impl Run {
         (out.first, out.lines.iter().cloned().collect())
     }
 
+    /// A consistent snapshot starting at `offset`, with the actual first index when
+    /// the ring buffer has already discarded the requested lines.
+    pub fn lines_from(&self, offset: u64) -> (u64, Vec<OutputLine>) {
+        let out = self.0.output.lock().unwrap();
+        let first = offset.clamp(out.first, out.total());
+        (
+            first,
+            out.lines
+                .iter()
+                .skip((first - out.first) as usize)
+                .cloned()
+                .collect(),
+        )
+    }
+
     /// The last `n` lines held in memory.
     pub fn tail(&self, n: usize) -> Vec<OutputLine> {
         let out = self.0.output.lock().unwrap();

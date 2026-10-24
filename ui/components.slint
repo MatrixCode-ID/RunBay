@@ -1,6 +1,195 @@
 // Shared building blocks: icon buttons, status badges, chips, avatars, and dialogs.
 
 import { Theme, Icons } from "theme.slint";
+import { ListView } from "std-widgets.slint";
+import { OutputRow } from "types.slint";
+
+// One protocol for the Full output and the Compact/Icon output popups.
+export global OutputBridge {
+    callback selection-event(bool, string, int, int, bool);
+    in-out property <bool> full-selected;
+    in-out property <bool> popup-selected;
+    in-out property <int> full-focus: -1;
+    in-out property <int> popup-focus: -1;
+    in-out property <int> popup-generation;
+}
+
+// Virtualized ANSI spans, with selection drawn behind their original colors.
+export component OutputView inherits Rectangle {
+    in property <[OutputRow]> rows;
+    in property <int> columns;
+    in property <bool> popup;
+    in property <int> generation;
+    in property <length> font-size: 13px;
+    in property <length> row-height: 18px;
+    in property <length> side-padding: 12px;
+    property <bool> follow: true;
+    property <bool> dragging;
+    property <int> pressed-row;
+    property <int> pressed-column;
+    property <bool> selected: popup ? OutputBridge.popup-selected : OutputBridge.full-selected;
+    property <int> focus-row: popup ? OutputBridge.popup-focus : OutputBridge.full-focus;
+    property <length> char-width: max(1px, measure.preferred-width);
+    forward-focus: keys;
+    clip: true;
+
+    callback selection-start(int, int, bool);
+    callback selection-extend(int, int);
+    callback selection-word(int, int);
+    callback selection-line(int, int);
+    callback selection-key(string);
+    callback selection-clear();
+    callback copy-selection();
+    callback select-all();
+    selection-start(row, column, shift) => { OutputBridge.selection-event(popup, "start", row, column, shift); }
+    selection-extend(row, column) => { OutputBridge.selection-event(popup, "extend", row, column, false); }
+    selection-word(row, column) => { OutputBridge.selection-event(popup, "word", row, column, false); }
+    selection-line(row, column) => { OutputBridge.selection-event(popup, "line", row, column, false); }
+    selection-key(key) => { OutputBridge.selection-event(popup, key, 0, 0, false); root.reveal-focus(); }
+    selection-clear => { OutputBridge.selection-event(popup, "clear", 0, 0, false); }
+    copy-selection => { OutputBridge.selection-event(popup, "copy", 0, 0, false); }
+    select-all => { OutputBridge.selection-event(popup, "all", 0, 0, false); }
+
+    pure function row-at-pointer() -> int {
+        return clamp(floor((touch.mouse-y - list.content-y) / row-height), 0, max(0, rows.length - 1));
+    }
+    pure function column-at-pointer() -> int {
+        return max(0, floor((touch.mouse-x - list.content-x - side-padding) / char-width));
+    }
+    public function scroll-to-end() {
+        follow = true;
+        list.content-y = min(0px, list.visible-height - list.content-height);
+        list.content-x = 0px;
+    }
+    function reveal-focus() {
+        if focus-row >= 0 {
+            if focus-row * row-height + list.content-y < 0px {
+                list.content-y = -focus-row * row-height;
+            } else if (focus-row + 1) * row-height + list.content-y > list.visible-height {
+                list.content-y = min(0px, list.visible-height - (focus-row + 1) * row-height);
+            }
+        }
+    }
+    changed generation => { dragging = false; root.scroll-to-end(); }
+    changed selected => {
+        if selected { follow = false; }
+        else { follow = list.content-y <= list.visible-height - list.content-height + 4px; }
+    }
+
+    measure := Text {
+        visible: false;
+        text: "M";
+        font-family: Theme.mono-font;
+        font-size: root.font-size;
+    }
+    list := ListView {
+        content-width: max(self.visible-width, root.columns * root.char-width + 2 * root.side-padding);
+        for row in root.rows: Rectangle {
+            height: root.row-height;
+            Rectangle {
+                x: root.side-padding + max(0, row.selected-from) * root.char-width;
+                width: max(0, row.selected-to - row.selected-from) * root.char-width;
+                height: parent.height;
+                visible: row.selected-from >= 0;
+                background: Theme.console-selection;
+            }
+            HorizontalLayout {
+                alignment: start;
+                padding-left: root.side-padding;
+                padding-right: root.side-padding;
+                for span in row.spans: Text {
+                    text: span.text;
+                    color: span.colored ? span.color : row.stderr ? Theme.console-error : Theme.console-text;
+                    font-family: Theme.mono-font;
+                    font-size: root.font-size;
+                    font-weight: span.bold ? 700 : 400;
+                    wrap: no-wrap;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        changed content-height => {
+            if root.follow && !root.selected && !root.dragging {
+                self.content-y = min(0px, self.visible-height - self.content-height);
+            }
+        }
+        changed content-y => {
+            root.follow = !root.selected && !root.dragging && self.content-y <= self.visible-height - self.content-height + 4px;
+        }
+    }
+    keys := FocusScope {
+        width: list.visible-width;
+        height: list.visible-height;
+        key-pressed(event) => {
+            if event.modifiers.control && (event.text == "c" || event.text == "C" || event.text == Key.Insert) {
+                root.copy-selection(); return accept;
+            }
+            if event.modifiers.control && (event.text == "a" || event.text == "A") {
+                root.select-all(); return accept;
+            }
+            if event.text == Key.Escape { root.selection-clear(); return accept; }
+            if event.modifiers.shift {
+                if event.text == Key.LeftArrow { root.selection-key("left"); return accept; }
+                if event.text == Key.RightArrow { root.selection-key("right"); return accept; }
+                if event.text == Key.UpArrow { root.selection-key("up"); return accept; }
+                if event.text == Key.DownArrow { root.selection-key("down"); return accept; }
+                if event.text == Key.Home { root.selection-key("home"); return accept; }
+                if event.text == Key.End { root.selection-key("end"); return accept; }
+            }
+            return reject;
+        }
+        touch := TouchArea {
+            mouse-cursor: text;
+            pointer-event(event) => {
+                if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                    keys.focus();
+                    root.pressed-row = root.row-at-pointer();
+                    root.pressed-column = root.column-at-pointer();
+                    root.selection-start(root.pressed-row, root.pressed-column, event.modifiers.shift);
+                    root.dragging = true;
+                }
+                if event.kind == PointerEventKind.cancel || (event.button == PointerEventButton.left && event.kind == PointerEventKind.up) {
+                    root.dragging = false;
+                    root.follow = !root.selected && list.content-y <= list.visible-height - list.content-height + 4px;
+                }
+            }
+            moved => {
+                if root.dragging && (root.row-at-pointer() != root.pressed-row || root.column-at-pointer() != root.pressed-column) {
+                    root.selection-extend(root.row-at-pointer(), root.column-at-pointer());
+                }
+            }
+            scroll-event(event) => {
+                list.content-y = clamp(list.content-y + event.delta-y, min(0px, list.visible-height - list.content-height), 0px);
+                list.content-x = clamp(list.content-x + event.delta-x, min(0px, list.visible-width - list.content-width), 0px);
+                if root.dragging { root.selection-extend(root.row-at-pointer(), root.column-at-pointer()); }
+                return accept;
+            }
+        }
+        ContextMenuArea {
+            Menu {
+                MenuItem { title: "Copy"; enabled: root.selected; activated => { root.copy-selection(); } }
+                MenuItem { title: "Select all"; activated => { keys.focus(); root.select-all(); } }
+            }
+        }
+    }
+    Timer {
+        interval: 40ms;
+        running: root.dragging && (touch.mouse-y < 16px || touch.mouse-y > list.visible-height - 16px
+            || touch.mouse-x < 0px || touch.mouse-x > list.visible-width);
+        triggered => {
+            if touch.mouse-y < 16px {
+                list.content-y = min(0px, list.content-y + root.row-height);
+            } else if touch.mouse-y > list.visible-height - 16px {
+                list.content-y = max(min(0px, list.visible-height - list.content-height), list.content-y - root.row-height);
+            }
+            if touch.mouse-x < 0px { list.content-x = min(0px, list.content-x + root.char-width * 3); }
+            else if touch.mouse-x > list.visible-width {
+                list.content-x = max(min(0px, list.visible-width - list.content-width), list.content-x - root.char-width * 3);
+            }
+            root.selection-extend(root.row-at-pointer(), root.column-at-pointer());
+        }
+    }
+}
 
 // Content for Tooltip popups; the popup keeps it above surrounding UI and clipping.
 export component TooltipContent inherits Rectangle {

@@ -10,6 +10,10 @@ export struct Span {
 
 // One output line.
 export struct OutputRow {
+    run-index: int,
+    plain-text: string,
+    selected-from: int,
+    selected-to: int,
     spans: [Span],
     stderr: bool,
 }

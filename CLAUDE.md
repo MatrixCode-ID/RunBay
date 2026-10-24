@@ -111,15 +111,24 @@ RunBay will be published as open source under the **MIT license**.
   features are added; that folder does not start the workflow (user decision
   2026-10-24). Move it to `doc/ReleaseNote/` and raise `version` in `Cargo.toml`
   in the same change, and only when the user asks for a release. One untagged
-  release note per push to `main`.
+  release note per push to `main`. Immediately after moving the candidate,
+  create a fresh candidate for the next version in the same stage/channel
+  (user decision 2026-10-24); do not wait for tagging. Released notes stay in
+  `doc/ReleaseNote/`, never as duplicates in `doc/ReleaseNote-Candidate/`.
 - Every feature or code fix is recorded in the release note candidate in
   `doc/ReleaseNote-Candidate/<version>.md` in the same change (user decision
   2026-10-24): new behavior under `## New features`, fixes under `## Fixes`, and
   anything users must do under `## Upgrade notes`. Keep `## Summary` current.
+  Maintain and tidy the candidate as part of every bug update, code fix, or new
+  feature, rather than deferring release-note work until publishing (user
+  decision 2026-10-24). Keep its version, summary, categories, and entries
+  consistent with the changes as they happen; remove duplicates and already
+  released entries immediately. Release preparation should need only a final
+  consistency check, not a reconstruction of changes from history.
   The folder `doc/ReleaseNote-Candidate/` always exists (kept with a
   `.gitkeep`). When no candidate exists, create one automatically without asking
-  (user decision 2026-10-24), including right after a release is tagged. Its
-  version is the last released version (the latest `v*` tag) with the stage
+  (user decision 2026-10-24), including during release preparation. Its
+  version is the latest released or prepared release version with the stage
   number raised by one in the same stage, e.g.
   `1.0.0-alpha.1` → `1.0.0-alpha.2`, `1.0.0-beta.3` → `1.0.0-beta.4`; after a
   final release (no stage), raise PATCH. Moving to another stage or raising
@@ -127,7 +136,9 @@ RunBay will be published as open source under the **MIT license**.
   [doc/ReleaseNote/README.md](doc/ReleaseNote/README.md). Changes that do not
   affect users (refactors, tests, docs, CI) are not listed. The candidate thus
   collects every user-facing change in the repository since the previous release
-  (the latest `v*` tag; for the first release, everything so far).
+  (the latest release note moved to `doc/ReleaseNote/`; for the first release,
+  everything so far). Check remote tags if local tags are missing; missing local
+  tags must not reset the candidate to an already released version.
 - Never create or push `v*` tags by hand; the workflow does it.
 
 ## Local artifacts

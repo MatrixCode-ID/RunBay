@@ -26,6 +26,7 @@ pub struct PopupState {
     pub run_id: Option<String>,
     pub output: Rc<VecModel<OutputRow>>,
     pub parser: AnsiParser,
+    pub selection: super::selection::Selection,
 }
 
 /// Edge snapping of the floating icon: the nearest left or right edge of the work area of
@@ -223,52 +224,78 @@ impl Controller {
                     .and_then(|h| h.last())
                     .map(|r| r.run_id.clone())
             });
-        let lines: Vec<OutputLine> = match &run_id {
+        let limit = self.settings.read().unwrap().output_line_limit.max(100) as usize;
+        let (first, lines): (u64, Vec<OutputLine>) = match &run_id {
             Some(id) => match self.manager.find(id) {
-                Some(run) => run.tail(1000),
+                Some(run) => run.lines(),
                 None => self
                     .find_record(id)
                     .and_then(|(_, path)| std::fs::read_to_string(path).ok())
                     .map(|text| {
                         let all: Vec<&str> = text.lines().collect();
-                        all[all.len().saturating_sub(1000)..]
+                        let first = all.len().saturating_sub(limit);
+                        let lines = all[first..]
                             .iter()
-                            .map(|l| OutputLine {
-                                text: l.to_string(),
+                            .map(|line| OutputLine {
+                                text: (*line).to_string(),
                                 stderr: false,
                             })
-                            .collect()
+                            .collect();
+                        (first as u64, lines)
                     })
                     .unwrap_or_default(),
             },
-            None => Vec::new(),
+            None => (0, Vec::new()),
         };
         {
             let mut st = self.state.borrow_mut();
             st.popup.run_id = run_id;
             st.popup.parser = AnsiParser::new();
+            st.popup.selection.reset(first);
             st.popup.output.set_vec(Vec::new());
         }
         self.append_popup_lines(&lines);
         self.refresh_popup_header();
+        for bridge in [
+            self.modes.compact.global::<crate::OutputBridge>(),
+            self.modes.popup.global::<crate::OutputBridge>(),
+        ] {
+            bridge.set_popup_generation(bridge.get_popup_generation().wrapping_add(1));
+        }
     }
 
     pub(super) fn append_popup_lines(&self, lines: &[OutputLine]) {
         let dark = self.ui().global::<crate::Theme>().get_dark();
         let mut st = self.state.borrow_mut();
+        let limit = self.settings.read().unwrap().output_line_limit.max(100) as usize;
         let model = st.popup.output.clone();
         let rows: Vec<OutputRow> = lines
             .iter()
-            .map(|l| convert::output_row(&mut st.popup.parser, l, dark))
+            .map(|line| {
+                let index = st.popup.selection.next();
+                let row = convert::output_row(&mut st.popup.parser, line, dark, index);
+                st.popup
+                    .selection
+                    .lines
+                    .push_back(row.plain_text.to_string());
+                row
+            })
             .collect();
+        st.popup.selection.trim(limit);
         drop(st);
         for row in rows {
             model.push(row);
         }
-        let excess = slint::Model::row_count(&*model).saturating_sub(1000);
+        let excess = slint::Model::row_count(&*model).saturating_sub(limit);
         for _ in 0..excess {
             model.remove(0);
         }
+        let columns = slint::Model::iter(&*model)
+            .map(|row| row.plain_text.chars().count())
+            .max()
+            .unwrap_or(0);
+        self.each_mini(|bridge| bridge.set_output_columns(columns as i32));
+        self.refresh_selection(true);
     }
 
     /// Updates the popup title, status, and agent.
