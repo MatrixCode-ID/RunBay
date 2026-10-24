@@ -116,7 +116,14 @@ RunBay will be published as open source under the **MIT license**.
   `doc/ReleaseNote-Candidate/<version>.md` in the same change (user decision
   2026-10-24): new behavior under `## New features`, fixes under `## Fixes`, and
   anything users must do under `## Upgrade notes`. Keep `## Summary` current.
-  When no candidate exists, create one for the next version in the format of
+  The folder `doc/ReleaseNote-Candidate/` always exists (kept with a
+  `.gitkeep`). When no candidate exists, create one automatically without asking
+  (user decision 2026-10-24), including right after a release is tagged. Its
+  version is the last released version (the latest `v*` tag) with the stage
+  number raised by one in the same stage, e.g.
+  `1.0.0-alpha.1` → `1.0.0-alpha.2`, `1.0.0-beta.3` → `1.0.0-beta.4`; after a
+  final release (no stage), raise PATCH. Moving to another stage or raising
+  MAJOR/MINOR is decided by the user. Use the format of
   [doc/ReleaseNote/README.md](doc/ReleaseNote/README.md). Changes that do not
   affect users (refactors, tests, docs, CI) are not listed. The candidate thus
   collects every user-facing change in the repository since the previous release

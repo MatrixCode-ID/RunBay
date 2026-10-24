@@ -105,7 +105,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $manifest = Get-Content Cargo.toml -Raw
-          $updated = [regex]::Replace($manifest, '(?m)^(version\s*=\s*)"[^"]*"', "`${1}`"$env:VERSION`"", 1)
+          # Replace only the first match (the package version); the static Replace takes RegexOptions, not a count.
+          $updated = [regex]::new('(?m)^(version\s*=\s*)"[^"]*"').Replace($manifest, "`${1}`"$env:VERSION`"", 1)
           if ($updated -eq $manifest -and $manifest -notmatch "(?m)^version\s*=\s*`"$([regex]::Escape($env:VERSION))`"") {
             throw 'Could not set the package version in Cargo.toml.'
           }
