@@ -509,6 +509,11 @@ The runner works on its own thread; the UI only receives events through
   do not start it. It runs CI first, then releases the single release note that has no `v<version>` tag
   yet: builds `RunBay.exe` with that version, tags `v<version>`, and creates the
   release with its assets. Without an untagged release note nothing is published.
+- Installing: `scripts/install/install.ps1` (run from the README with
+  `irm … | iex`) picks the highest non-draft release like the update check
+  (§14.3), verifies `RunBay.exe` against `SHA256SUMS`, installs it in
+  `%LOCALAPPDATA%\Programs\RunBay\` (or `-InstallDir`), adds a Start menu
+  shortcut, and starts RunBay. It refuses to replace a running RunBay.
 - Auto update needs the repository and its releases to be **public**; the
   updater does not use GitHub credentials.
 

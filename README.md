@@ -28,11 +28,33 @@ list, or a floating icon that stays on top.
 
 ## Install
 
+Paste this into PowerShell (no admin rights needed):
+
+```powershell
+irm https://raw.githubusercontent.com/MatrixCode-ID/RunBay/main/scripts/install/install.ps1 | iex
+```
+
+The script downloads `RunBay.exe` of the newest release (pre-releases included),
+verifies it against `SHA256SUMS`, installs it in
+`%LOCALAPPDATA%\Programs\RunBay\`, adds a Start menu shortcut, and starts RunBay.
+Run it again to upgrade (exit RunBay first). Options: `-InstallDir <folder>`,
+`-Version <version>`, `-NoShortcut`, and `-NoStart`, passed like this:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/MatrixCode-ID/RunBay/main/scripts/install/install.ps1))) -InstallDir 'D:\Tools\RunBay'
+```
+
+To install by hand instead:
+
 1. Download `RunBay.exe` from the latest
    [release](https://github.com/MatrixCode-ID/RunBay/releases).
 2. Put it in a folder you can write to, e.g. `C:\Tools\RunBay\`. RunBay creates
    its `data\` folder next to the executable; there is no installer.
 3. Start it. Use **Settings → Load with Windows** to start it at sign-in.
+
+RunBay then updates itself: it checks GitHub Releases on startup and every 6
+hours, downloads and verifies a new version in the background, and installs it
+when you choose **Restart to update**. Your `data\` folder is never touched.
 
 ## Usage
 

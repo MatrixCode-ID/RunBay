@@ -139,6 +139,10 @@ RunBay will be published as open source under the **MIT license**.
 - The `.ps1` files and anything else a script needs live in `scripts/<subject>/`,
   where `<subject>` is the name of the script (e.g. `scripts/publish-local.cmd` →
   `scripts/publish-local/publish-local.ps1`).
+- Exception: `scripts/install/install.ps1` is the user-facing installer that the
+  README runs with `irm … | iex` from `main`, so it has no `.cmd` wrapper. It
+  must keep working in Windows PowerShell 5.1 and PowerShell 7, and its release
+  selection must match the auto updater (§14 of the specification).
 
 ## Code conventions
 
