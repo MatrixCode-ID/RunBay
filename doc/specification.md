@@ -362,6 +362,12 @@ restored only after its native frame has been initialized.
   Action icons, enabled state, running state, and agent markers are preserved.
 - While an app has active actions, its card shows a Stop icon that stops all of
   that app's active process trees, including parallel actions.
+- **Panel splitter**: an 8 px draggable divider between Navigation and Output
+  resizes both panels horizontally, with a resize cursor and a visible grip that
+  highlights on hover or drag. Navigation starts at 320 px; dragging keeps at
+  least 280 px for each panel when space permits, accounting for the history
+  flyout. The requested width remains for the current session, including mode
+  switches; shrinking the window temporarily clamps it to the available space.
 - **Action History** (right flyout, opened with the *Action History* button):
   runs from every app's `history/index.jsonl`, newest first, filterable by
   app/action/status. Selecting an entry opens its log in the Output panel.

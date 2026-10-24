@@ -262,6 +262,10 @@ export component MainWindow inherits Window {
     // "" (main view), "editor", or "settings".
     in-out property <string> page;
     in-out property <bool> history-open;
+    // Keep the requested width while the window temporarily constrains the panels.
+    private property <length> requested-navigation-width: 320px;
+    private property <length> maximum-navigation-width: max(280px, root.width - history-panel.width - 288px);
+    out property <length> navigation-panel-width: navigation.width;
     in-out property <bool> about-visible;
     in property <string> update-text;
     // Shown next to the version when an update is ready, e.g. "Update ready".
@@ -323,8 +327,8 @@ export component MainWindow inherits Window {
         y: root.caption-height;
         height: parent.height - root.caption-height;
         // Navigation.
-        Rectangle {
-            width: 320px;
+        navigation := Rectangle {
+            width: clamp(root.requested-navigation-width, 280px, root.maximum-navigation-width);
             background: Theme.surface-container;
             VerticalLayout {
                 HorizontalLayout {
@@ -479,6 +483,37 @@ export component MainWindow inherits Window {
             }
         }
 
+        // A wide hit target with a small visible grip between apps and output.
+        splitter := Rectangle {
+            width: 8px;
+            background: Theme.surface-container;
+            accessible-role: none;
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 2px;
+                height: 32px;
+                border-radius: 1px;
+                background: splitter-touch.pressed || splitter-touch.has-hover ? Theme.primary : Theme.outline;
+            }
+            splitter-touch := TouchArea {
+                private property <length> grab-offset;
+                mouse-cursor: ew-resize;
+                pointer-event(event) => {
+                    if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                        self.grab-offset = self.mouse-x;
+                    }
+                }
+                moved => {
+                    if self.pressed {
+                        root.requested-navigation-width = clamp(splitter.x + self.mouse-x - self.grab-offset,
+                            280px, root.maximum-navigation-width);
+                    }
+                }
+            }
+            Tooltip { TooltipContent { text: "Drag to resize app and console panels"; } }
+        }
+
         // Output.
         VerticalLayout {
             horizontal-stretch: 1;
@@ -591,7 +626,7 @@ export component MainWindow inherits Window {
             }
             Rectangle { height: 12px; }
         }
-        Rectangle {
+        history-panel := Rectangle {
             width: history-open ? 372px : 12px;
             animate width { duration: Theme.motion-medium; easing: ease-out-back; }
             clip: true;

@@ -53,6 +53,25 @@ fn click(window: &MinimalSoftwareWindow, x: f32, y: f32) {
     });
 }
 
+fn drag_splitter(window: &MinimalSoftwareWindow, start: f32, end: f32) {
+    let position = LogicalPosition::new(start, 300.0);
+    window.dispatch_event(WindowEvent::PointerMoved { position });
+    window.dispatch_event(WindowEvent::PointerPressed {
+        position,
+        button: PointerEventButton::Left,
+    });
+    // Multiple moves catch coordinate drift as the splitter itself moves.
+    for x in [start + (end - start) / 2.0, end] {
+        window.dispatch_event(WindowEvent::PointerMoved {
+            position: LogicalPosition::new(x, 300.0),
+        });
+    }
+    window.dispatch_event(WindowEvent::PointerReleased {
+        position: LogicalPosition::new(end, 300.0),
+        button: PointerEventButton::Left,
+    });
+}
+
 #[test]
 fn captions_render_in_both_themes_and_follow_layout_and_dpi() {
     let windows = Rc::new(RefCell::new(Vec::new()));
@@ -187,4 +206,41 @@ fn captions_render_in_both_themes_and_follow_layout_and_dpi() {
         "Space toggles the focused switch"
     );
     assert_eq!(changes.get(), 2, "each toggle requests one automatic save");
+
+    full.set_page("".into());
+    full_window.set_size(PhysicalSize::new(1100, 736));
+    render(&full_window, "splitter-default");
+    assert_eq!(full.get_navigation_panel_width(), 320.0);
+    drag_splitter(&full_window, 324.0, 484.0);
+    render(&full_window, "splitter-wider");
+    assert_eq!(full.get_navigation_panel_width(), 480.0);
+    // Releasing the pointer ends resizing.
+    full_window.dispatch_event(WindowEvent::PointerMoved {
+        position: LogicalPosition::new(600.0, 300.0),
+    });
+    assert_eq!(full.get_navigation_panel_width(), 480.0);
+
+    drag_splitter(&full_window, 484.0, 100.0);
+    render(&full_window, "splitter-minimum");
+    assert_eq!(full.get_navigation_panel_width(), 280.0);
+    drag_splitter(&full_window, 284.0, 1050.0);
+    render(&full_window, "splitter-maximum");
+    assert_eq!(full.get_navigation_panel_width(), 800.0);
+    full_window.set_size(PhysicalSize::new(640, 736));
+    render(&full_window, "splitter-narrow-window");
+    assert_eq!(full.get_navigation_panel_width(), 340.0);
+    full_window.set_size(PhysicalSize::new(1100, 736));
+    render(&full_window, "splitter-restored-window");
+    assert_eq!(full.get_navigation_panel_width(), 800.0);
+
+    full.set_history_open(true);
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    slint::platform::update_timers_and_animations();
+    render(&full_window, "splitter-with-history");
+    assert!(full.get_navigation_panel_width() <= 440.0);
+    full.set_history_open(false);
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    slint::platform::update_timers_and_animations();
+    render(&full_window, "splitter-without-history");
+    assert_eq!(full.get_navigation_panel_width(), 800.0);
 }
