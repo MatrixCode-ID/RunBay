@@ -12,6 +12,7 @@ pub mod mcp;
 pub mod platform;
 pub mod runner;
 pub mod ui;
+pub mod update;
 
 /// The RunBay version, from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -38,6 +38,8 @@ pub struct Options {
     pub autostart: bool,
     /// Development option for tests: serve the pipe without a window.
     pub headless: bool,
+    /// `data_dir` was given with `--data-dir` (kept when restarting after an update).
+    pub custom_data_dir: bool,
 }
 
 /// Selects the femtovg (OpenGL) renderer, or the software renderer when OpenGL is missing.
@@ -97,6 +99,16 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
         },
         popup_timer: RefCell::new(None),
         theme_overridden: std::cell::Cell::new(false),
+        update: RefCell::new(updates::UpdateUi::default()),
+        update_timer: RefCell::new(None),
+        restart_args: if options.custom_data_dir {
+            vec![
+                "--data-dir".to_string(),
+                options.data_dir.to_string_lossy().into_owned(),
+            ]
+        } else {
+            Vec::new()
+        },
         icon_timer: RefCell::new(None),
         state: RefCell::new(State {
             output: Rc::new(VecModel::default()),
@@ -113,6 +125,7 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
     controller.bind_history();
     controller.bind_close();
     controller.bind_modes();
+    controller.bind_updates();
     controller.restore_full_window();
     controller.state.borrow_mut().mode = controller.store.load_window_state().mode;
     controller.create_tray();
@@ -132,6 +145,7 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
         .context("cannot start the pipe server")?;
 
     controller.show_window();
+    controller.start_update_checks();
     slint::run_event_loop_until_quit().context("the event loop failed")?;
     manager.stop_all(Duration::from_secs(5));
     Ok(())
@@ -197,6 +211,8 @@ struct State {
     full_for_dialog: bool,
     /// The floating icon sits on the right edge (its popup opens to the left).
     icon_right: bool,
+    /// The exit dialog is the "restart to update" question.
+    exit_for_update: bool,
 }
 
 struct Controller {
@@ -213,6 +229,10 @@ struct Controller {
     popup_timer: RefCell<Option<Rc<slint::Timer>>>,
     /// A theme override was applied (switching back to "Follow Windows" must reset it).
     theme_overridden: std::cell::Cell<bool>,
+    update: RefCell<updates::UpdateUi>,
+    update_timer: RefCell<Option<Rc<slint::Timer>>>,
+    /// Arguments passed again when RunBay restarts itself.
+    restart_args: Vec<String>,
 }
 
 impl Controller {

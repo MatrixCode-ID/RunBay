@@ -461,6 +461,8 @@ The runner works on its own thread; the UI only receives events through
   unauthenticated rate limit.
 - A failed check (offline, API error, rate limit) is silent apart from a log
   entry; a manual check shows the error.
+- Development option: the environment variable `RUNBAY_UPDATE_API` replaces
+  `https://api.github.com` (used by tests with a local server).
 
 ### 14.4 Download and install
 
@@ -476,7 +478,9 @@ The runner works on its own thread; the UI only receives events through
    *Cancel*.
 5. Install: the running `RunBay.exe` is renamed to `RunBay.exe.old`, the new
    executable is moved into place, and RunBay restarts in the same mode and
-   position with `--updated`. On the next startup `RunBay.exe.old` is deleted.
+   position with `--updated`. The new process waits (up to 15 seconds) for the
+   old one to release the pipe instead of activating it. On the next startup
+   `RunBay.exe.old` is deleted.
 6. If the new executable cannot be moved into place (e.g. no write access to the
    folder), the old executable is restored and the error is shown with the
    download location for a manual update.
@@ -490,7 +494,9 @@ listed in the release notes.
 - **Auto update** (default on): turning it off stops the periodic and startup
   checks; manual checks remain available.
 - A version the user dismisses with **Skip this version** is not offered again
-  until a newer one is published.
+  until a newer one is published (older versions are not offered either). The
+  About dialog shows *Restart to update*, *Skip this version*, and *Release
+  notes* while an update is ready.
 
 ## 15. MCP server for agents
 

@@ -126,6 +126,28 @@ pub fn open_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Opens a web page in the default browser.
+pub fn open_url(url: &str) -> Result<()> {
+    if !url.starts_with("https://") {
+        bail!("refusing to open {url}");
+    }
+    // SAFETY: plain ShellExecuteW call with valid strings.
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            w!("open"),
+            &HSTRING::from(url),
+            None,
+            None,
+            SW_SHOWNORMAL,
+        )
+    };
+    if result.0 as isize <= 32 {
+        bail!("cannot open {url}");
+    }
+    Ok(())
+}
+
 /// Opens a file in its editor association (`edit` verb), falling back to `open`.
 pub fn edit_path(path: &Path) -> Result<()> {
     // SAFETY: plain ShellExecuteW call with valid strings.

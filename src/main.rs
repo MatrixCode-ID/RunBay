@@ -13,14 +13,18 @@ fn main() {
         data_dir: Store::default_root(),
         autostart: false,
         headless: false,
+        custom_data_dir: false,
     };
     let mut mcp = false;
+    let mut updated = false;
     let mut custom_data_dir = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--autostart" => options.autostart = true,
             "--mcp" => mcp = true,
+            // Restarted by an update: the previous instance is still releasing the pipe.
+            "--updated" => updated = true,
             // Development option for tests: serve the pipe without a window.
             "--headless" => options.headless = true,
             // Development option: use another data folder (tests, side-by-side debugging).
@@ -49,9 +53,14 @@ fn main() {
         }
         return;
     }
+    options.custom_data_dir = custom_data_dir;
     runbay::logging::init(&options.data_dir);
     let headless = options.headless;
-    if let Err(e) = run(options, custom_data_dir) {
+    if let Ok(exe) = std::env::current_exe() {
+        // Left by an update; the previous process may still be exiting.
+        std::thread::spawn(move || runbay::update::remove_old(&exe));
+    }
+    if let Err(e) = run(options, custom_data_dir, updated) {
         log::error!("{e:#}");
         if !headless {
             runbay::platform::error_box("RunBay", &format!("{e:#}"));
@@ -60,8 +69,19 @@ fn main() {
     }
 }
 
-fn run(options: ui::Options, custom_data_dir: bool) -> anyhow::Result<()> {
+fn run(options: ui::Options, custom_data_dir: bool, updated: bool) -> anyhow::Result<()> {
     let name = pipe::pipe_name(custom_data_dir.then_some(options.data_dir.as_path()))?;
+    if updated {
+        // Wait for the previous version to exit instead of activating it.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        loop {
+            match pipe::PipeServer::bind(&name) {
+                Ok(listener) => return ui::run(options, listener),
+                Err(e) if std::time::Instant::now() >= deadline => return Err(e),
+                Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
+            }
+        }
+    }
     match pipe::PipeServer::bind(&name) {
         Ok(listener) => ui::run(options, listener),
         Err(bind_error) => {

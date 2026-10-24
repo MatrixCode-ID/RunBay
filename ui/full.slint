@@ -292,6 +292,9 @@ export component MainWindow inherits Window {
     in property <string> update-badge;
     in-out property <bool> exit-visible;
     in property <string> exit-text;
+    in property <string> exit-title: "Exit RunBay?";
+    in property <string> exit-button: "Stop all and exit";
+    in property <bool> update-ready;
 
     // whenRunning "ask" dialog.
     in-out property <bool> ask-visible;
@@ -316,6 +319,9 @@ export component MainWindow inherits Window {
     callback check-updates();
     callback exit-answer(string);
     callback switch-mode(string);
+    callback restart-update();
+    callback skip-update();
+    callback release-notes();
     callback remove-app(string);
     callback confirm-remove();
     callback ask-answer(string);
@@ -759,10 +765,14 @@ export component MainWindow inherits Window {
         dismissed => { root.about-visible = false; }
         notices => { root.about-notices(); }
         check-updates => { root.check-updates(); }
+        update-ready: update-ready;
+        restart-update => { root.restart-update(); }
+        skip-update => { root.skip-update(); }
+        release-notes => { root.release-notes(); }
     }
 
     if exit-visible: DialogFrame {
-        title: "Exit RunBay?";
+        title: exit-title;
         dismissed => { root.exit-answer("cancel"); }
         Text {
             text: exit-text;
@@ -777,7 +787,7 @@ export component MainWindow inherits Window {
                 clicked => { root.exit-answer("cancel"); }
             }
             PillButton {
-                text: "Stop all and exit";
+                text: exit-button;
                 style: "danger";
                 clicked => { root.exit-answer("exit"); }
             }

@@ -808,9 +808,12 @@ export component HistoryFlyout inherits Rectangle {
 export component AboutDialog inherits DialogFrame {
     in property <string> version;
     in property <string> update-text;
+    in property <bool> update-ready;
     callback notices();
     callback check-updates();
     callback release-notes();
+    callback restart-update();
+    callback skip-update();
     title: "About RunBay";
     dialog-width: 440px;
     HorizontalLayout {
@@ -839,6 +842,23 @@ export component AboutDialog inherits DialogFrame {
         text: update-text;
         color: Theme.tertiary;
         wrap: word-wrap;
+    }
+    if update-ready: HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        PillButton {
+            text: "Restart to update";
+            style: "filled";
+            clicked => { root.restart-update(); }
+        }
+        PillButton {
+            text: "Skip this version";
+            clicked => { root.skip-update(); }
+        }
+        PillButton {
+            text: "Release notes";
+            clicked => { root.release-notes(); }
+        }
     }
     AboutSlint {
         height: 140px;

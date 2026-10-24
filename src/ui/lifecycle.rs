@@ -83,9 +83,18 @@ impl Controller {
     }
 
     pub(super) fn exit_answer(&self, answer: &str) {
-        self.ui().set_exit_visible(false);
+        let ui = self.ui();
+        ui.set_exit_visible(false);
+        ui.set_exit_title("Exit RunBay?".into());
+        ui.set_exit_button("Stop all and exit".into());
+        let for_update = std::mem::take(&mut self.state.borrow_mut().exit_for_update);
+        self.end_full_for_dialog();
         if answer == "exit" {
-            self.exit_now();
+            if for_update {
+                self.install_update();
+            } else {
+                self.exit_now();
+            }
         }
     }
 
