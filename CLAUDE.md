@@ -144,6 +144,12 @@ RunBay will be published as open source under the **MIT license**.
   (the latest release note moved to `doc/ReleaseNote/`; for the first release,
   everything so far). Check remote tags if local tags are missing; missing local
   tags must not reset the candidate to an already released version.
+- When the user asks to "raise the release" (Indonesian: "naikkan release"),
+  that means: move the candidate from `doc/ReleaseNote-Candidate/` to
+  `doc/ReleaseNote/` (raising `version` in `Cargo.toml` to match), create a new
+  empty candidate for the next version in `doc/ReleaseNote-Candidate/`, and
+  commit the change on `work-bench` (user decision 2026-10-25). The request
+  itself is the permission to commit; do not push unless asked.
 - Never create or push `v*` tags by hand; the workflow does it.
 
 ## Local artifacts
