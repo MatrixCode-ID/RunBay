@@ -40,7 +40,7 @@ the whole application uses expressive interaction or motion.
 ## Follow-up: supplied audit report
 
 Reviewed on 2026-10-25:
-`doc/Report/Audit Report Material Design By Google.md`.
+`../.artefacts/RunBay/Report/Audit Report Material Design By Google.md`.
 The document identifies its author as an AI collaborator and supplies no source
 citations or measurements. Its embedded implementation prompt is reference
 material, not authorization to change the application.
@@ -79,7 +79,7 @@ report intact as reference material and retain the current discussion status.
 ## Follow-up: complete ten-screen audit package
 
 Reviewed on 2026-10-25:
-`doc/Report/Google UI Audit/2026-10-25/`.
+`../.artefacts/RunBay/Report/Google UI Audit/2026-10-25/`.
 
 The package contains a complete Markdown report (duplicated identically in
 `public/`), a React dashboard with per-screen findings in
@@ -206,7 +206,7 @@ for discussion, not an approved implementation scope.
 
 ## Follow-up: third review (`ux_review_report.md`)
 
-Reviewed on 2026-10-25: `doc/Report/Google UI Audit/ux_review_report.md`, written
+Reviewed on 2026-10-25: `../.artefacts/RunBay/Report/Google UI Audit/ux_review_report.md`, written
 for the same ten-page screenshot PDF. The PDF pages could not be rendered in
 this session; claims were checked against current source instead. The report
 again cites no official component references or measurements, and it does not
@@ -258,13 +258,14 @@ acknowledge the corrections the previous revision accepted.
 ### Repository hygiene
 
 The supplied report names apps visible in the screenshots. Those names must not
-be committed under the open-source rules; keep the report outside the
-repository or redact it before committing `doc/Report/`.
+be committed under the open-source rules. All supplied reports were moved out
+of the repository to the local artefacts folder `../.artefacts/RunBay/Report/`
+on 2026-10-25; paths in this note refer to that folder.
 
 ## Follow-up: final synchronized AI Studio report
 
 Reviewed on 2026-10-25: the latest
-`doc/Report/Google UI Audit/2026-10-25/RUNBAY_UI_UX_REVIEW_MATERIAL3_EXPRESSIVE.md`
+`../.artefacts/RunBay/Report/Google UI Audit/2026-10-25/RUNBAY_UI_UX_REVIEW_MATERIAL3_EXPRESSIVE.md`
 ("Laporan Final Tersinkronisasi"). It drops the numeric score, and its 22-item
 inventory now adds up (6 supported, 3 to verify, 3 preferences, 10 withdrawn).
 It withdraws the contrast claim using the same `#49454f` on `#f7f2fa` pair
