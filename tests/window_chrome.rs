@@ -194,7 +194,7 @@ fn captions_render_in_both_themes_and_follow_layout_and_dpi() {
     let changes = Rc::new(Cell::new(0));
     let count = changes.clone();
     settings.on_changed(move || count.set(count.get() + 1));
-    click(&full_window, 890.0, 462.0);
+    click(&full_window, 890.0, 494.0);
     assert!(
         !settings.get_top_compact(),
         "pointer toggles the saved binding"
@@ -210,7 +210,7 @@ fn captions_render_in_both_themes_and_follow_layout_and_dpi() {
         std::thread::sleep(std::time::Duration::from_millis(130));
         slint::platform::update_timers_and_animations();
         let pixels = render(&full_window, "settings-keyboard-focus");
-        let count = (435..489)
+        let count = (467..521)
             .flat_map(|y| (860..920).map(move |x| y * 1100 + x))
             .filter(|&i| {
                 let p = pixels[i];

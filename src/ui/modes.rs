@@ -611,7 +611,7 @@ impl Controller {
         let scale = popup.window().scale_factor();
         let (w, h) = match view {
             "apps" => (320.0, 420.0),
-            "menu" => (250.0, 8.0 * 34.0 + 16.0),
+            "menu" => (250.0, 8.0 * 50.0 + 10.0),
             _ => (300.0, 60.0),
         };
         let (w, h) = ((w * scale) as i32, (h * scale) as i32);

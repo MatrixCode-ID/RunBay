@@ -500,8 +500,9 @@ Groups by category:
 Retention in Settings and the editor uses a connected button group with
 Off / Last N / Forever. Only Last N shows a count field followed by "runs";
 there is no clear button. Stored values, parsing and retention semantics stay
-unchanged. Text fields use a 48 px outlined TextInput wrapper with 4 px corners
-and primary focus outlines; dropdowns retain Slint material's native height.
+unchanged. Text fields and selection dropdowns use 48 px outlined controls with
+4 px corners and primary focus outlines. Dropdowns open the shared Expressive
+vertical menu described in §12.
 The wrapper supports editing, selection, clipboard shortcuts, horizontal
 scrolling and an editing context menu.
 
@@ -619,6 +620,22 @@ overload rendering.
 - Settings switches use RunBay color roles: selected tracks use primary and
   selected thumbs use on-primary for clear contrast in both Light and Dark.
   Unselected switches use surface-container-highest with outline borders/thumbs.
+- Selection dropdowns in Settings, the app editor, and History filters, plus
+  app action, Add action, overflow, and floating-icon menus share the standard
+  vertical menu from [Material 3 Expressive menus](https://m3.material.io/components/menus/specs).
+  Surfaces use surface-container-low, 16 px outer corners and elevation; items
+  have 48 px targets, 2 px gaps/insets, 12 px horizontal padding, 20 px icons,
+  and label-large text (14 px, weight 500). Selected entries use
+  tertiary-container / on-tertiary-container and a check, with rounded 12 px
+  corners; hover, focus, press, and disabled states remain distinct.
+  Dropdowns open below their field, constrain long lists to six visible rows
+  with scrolling, and expose their current value and expanded state to
+  accessibility. Up/Down and Home/End move the highlight; Enter/Space commits
+  the choice and Escape or an outside click dismisses without changing it.
+  Keyboard dismissal returns focus to the field. Existing stored indices and
+  selection callbacks are preserved.
+  The dropdown arrow points up only while its popup is open and returns down
+  after selection, Escape, Tab, or an outside click, independently of focus.
 - Expressive motion: short spring transitions for the Action History flyout, the
   icon popup, and badge changes; no animation while idle.
 - Density -2 gives lists 48/64 px one/two-line minimums, navigation 48 px and

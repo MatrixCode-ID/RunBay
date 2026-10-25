@@ -2,53 +2,9 @@
 
 import { ListView, LineEdit, TextEdit, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, AppDragHandle, AppDropIndicator, DialogFrame, PillButton, TooltipContent, OutputView, ConsoleThemeButton, TitleBar } from "components.slint";
+import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, AppDragHandle, AppDropIndicator, DialogFrame, PillButton, TooltipContent, OutputView, ConsoleThemeButton, TitleBar, MenuSurface, MenuEntry } from "components.slint";
 import { Span, OutputRow, ActionButton, RunRow, AppRow, Clock, AppDrag } from "types.slint";
 import { EditorPage, SettingsPage, HistoryFlyout, AboutDialog } from "pages.slint";
-
-component MenuItem inherits Rectangle {
-    in property <string> text;
-    in property <image> icon;
-    in property <bool> danger;
-    callback clicked();
-    height: 40px;
-    background: touch.has-hover ? Theme.surface-container-highest : transparent;
-    accessible-role: button;
-    accessible-label: text;
-    accessible-action-default => { root.clicked(); }
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 16px;
-        spacing: 12px;
-        Image {
-            source: icon;
-            width: 20px;
-            colorize: danger ? Theme.error : Theme.on-surface-variant;
-        }
-        Text {
-            text: root.text;
-            color: danger ? Theme.error : Theme.on-surface;
-            font-size: Theme.label-large;
-            vertical-alignment: center;
-        }
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
-
-component Menu inherits Rectangle {
-    border-radius: Theme.corner-small;
-    background: Theme.surface-container;
-    drop-shadow-blur: 8px;
-    drop-shadow-color: #00000040;
-    VerticalLayout {
-        padding-top: 8px;
-        padding-bottom: 8px;
-        @children
-    }
-}
 
 component AppCard inherits Rectangle {
     in property <AppRow> app;
@@ -182,37 +138,41 @@ component AppCard inherits Rectangle {
         x: menu-button.x + menu-button.width - 220px;
         y: menu-button.y + menu-button.height;
         width: 220px;
-        Menu {
-            if app.error == "": MenuItem {
+        MenuSurface {
+            dismissed => { app-menu.close(); }
+            if app.error == "": MenuEntry {
+                first: true;
                 text: "Edit";
                 icon: Icons.edit;
-                clicked => { root.edit-app(app.id); }
+                clicked => { root.edit-app(app.id); app-menu.close(); }
             }
-            if app.error == "": MenuItem {
+            if app.error == "": MenuEntry {
                 text: "Open working directory";
                 icon: Icons.folder-open;
-                clicked => { root.open-working-directory(app.id); }
+                clicked => { root.open-working-directory(app.id); app-menu.close(); }
             }
-            if app.error == "": MenuItem {
+            if app.error == "": MenuEntry {
                 text: "Move up";
                 icon: Icons.expand-more;
-                clicked => { root.move-app(app.id, -1); }
+                clicked => { root.move-app(app.id, -1); app-menu.close(); }
             }
-            if app.error == "": MenuItem {
+            if app.error == "": MenuEntry {
                 text: "Move down";
                 icon: Icons.expand-more;
-                clicked => { root.move-app(app.id, 1); }
+                clicked => { root.move-app(app.id, 1); app-menu.close(); }
             }
-            MenuItem {
+            MenuEntry {
+                first: app.error != "";
                 text: "Open app data folder";
                 icon: Icons.folder;
-                clicked => { root.open-data-folder(app.id); }
+                clicked => { root.open-data-folder(app.id); app-menu.close(); }
             }
-            MenuItem {
+            MenuEntry {
+                last: true;
                 text: "Remove";
                 icon: Icons.delete;
                 danger: true;
-                clicked => { root.remove-app(app.id); }
+                clicked => { root.remove-app(app.id); app-menu.close(); }
             }
         }
     }

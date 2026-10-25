@@ -2,7 +2,7 @@
 
 import { ListView, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, AppDragHandle, AppDropIndicator, OutputView, OutputBridge, ConsoleThemeButton } from "components.slint";
+import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, AppDragHandle, AppDropIndicator, OutputView, OutputBridge, ConsoleThemeButton, MenuSurface, MenuEntry } from "components.slint";
 import { Span, OutputRow, ActionButton, RunRow, AppRow, Clock, AppDrag } from "types.slint";
 
 // Data and callbacks shared by the Compact window and the Icon popup.
@@ -501,7 +501,7 @@ export component IconPopup inherits Window {
     callback menu-action(string);
     callback dismissed();
     width: view == "apps" ? 320px : view == "menu" ? 250px : 300px;
-    height: view == "apps" ? 420px : view == "menu" ? 8 * 34px + 16px : 60px;
+    height: view == "apps" ? 420px : view == "menu" ? 8 * 50px + 10px : 60px;
 
     FocusScope {
         key-pressed(event) => {
@@ -533,30 +533,26 @@ export component IconPopup inherits Window {
                 padding: 4px;
                 Snackbar { }
             }
-            if view == "menu": VerticalLayout {
-                padding: 6px;
-                for item in [
+            if view == "menu": MenuSurface {
+                dismissed => { root.dismissed(); }
+                for item[index] in [
                     { id: "full", text: "Full mode" },
                     { id: "compact", text: "Compact mode" },
-                    { id: "pin", text: pinned ? "Always on top  ✓" : "Always on top" },
+                    { id: "pin", text: "Always on top" },
                     { id: "small", text: "Icon size: small" },
                     { id: "medium", text: "Icon size: medium" },
                     { id: "large", text: "Icon size: large" },
                     { id: "copy-mcp-setup", text: "Copy MCP setup instructions" },
                     { id: "exit", text: "Exit" },
-                ]: Rectangle {
-                    height: 34px;
-                    background: menu-touch.has-hover ? Theme.surface-container-highest : transparent;
-                    border-radius: 6px;
-                    Text {
-                        x: 12px;
-                        text: item.text;
-                        color: item.id == "exit" ? Theme.error : Theme.on-surface;
-                        vertical-alignment: center;
-                    }
-                    menu-touch := TouchArea {
-                        clicked => { root.menu-action(item.id); }
-                    }
+                ]: MenuEntry {
+                    text: item.text;
+                    has-icon: false;
+                    first: index == 0;
+                    last: index == 7;
+                    selected: item.id == "pin" && root.pinned;
+                    checkable: item.id == "pin";
+                    danger: item.id == "exit";
+                    clicked => { root.menu-action(item.id); }
                 }
             }
         }

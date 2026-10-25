@@ -205,6 +205,10 @@ RunBay will be published as open source under the **MIT license**.
 - Console output has its own theme button and saved Light / Dark / Follow UI
   preference, shared by Full and Compact/Icon output views. Follow uses the
   selected UI theme. See specification §§5.3 and 8.
+- Selection dropdowns and app-owned action menus share the Material 3 Expressive
+  vertical menu styling from https://m3.material.io/components/menus/specs:
+  rounded surfaces, consistent item spacing, and explicit selected/interaction
+  states (user decision 2026-10-25). See specification §12.
 
 ## Code conventions
 

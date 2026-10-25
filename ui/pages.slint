@@ -1,8 +1,8 @@
 // Full-mode pages: the app editor, settings, the Action History flyout, and dialogs.
 
-import { TextEdit, ComboBox, CheckBox, ScrollView, ListView, AboutSlint } from "std-widgets.slint";
+import { TextEdit, CheckBox, ScrollView, ListView, AboutSlint } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { FilterChip, ConnectedButtonGroup, SegmentedList, ListItem, KeyboardRow, TextField, SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, ToggleSwitch } from "components.slint";
+import { FilterChip, ConnectedButtonGroup, SegmentedList, ListItem, KeyboardRow, TextField, SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, ToggleSwitch, Dropdown, MenuSurface, MenuEntry } from "components.slint";
 
 export struct EnvRow {
     key: string,
@@ -337,7 +337,9 @@ export component EditorPage inherits Rectangle {
                             }
                         }
                         FieldLabel { text: "PowerShell"; }
-                        ComboBox {
+                        Dropdown {
+                            menu-width: max(self.width, 360px);
+                            accessible-label: "PowerShell";
                             model: ["Auto (pwsh, then Windows PowerShell)", "PowerShell 7 (pwsh)", "Windows PowerShell 5.1"];
                             current-index <=> shell-index;
                         }
@@ -477,7 +479,8 @@ export component EditorPage inherits Rectangle {
                                 y: (parent.height - self.height) / 2;
                                 colorize: EditorBridge.action-has-image ? transparent : Theme.on-surface-variant;
                             }
-                            ComboBox {
+                            Dropdown {
+                                accessible-label: "Action icon";
                                 model: EditorBridge.action-icon-options;
                                 current-index <=> action-icon-index;
                                 enabled: !EditorBridge.action-has-image;
@@ -546,7 +549,8 @@ export component EditorPage inherits Rectangle {
                             placeholder-text: working-directory;
                         }
                         FieldLabel { text: "When the app is still running"; }
-                        ComboBox {
+                        Dropdown {
+                            accessible-label: "When the app is still running";
                             model: ["Ask", "Reject", "Stop and restart", "Run in parallel"];
                             current-index <=> when-running-index;
                         }
@@ -570,28 +574,32 @@ export component EditorPage inherits Rectangle {
         x: 280px;
         y: max(0px, root.height - 210px);
         width: 210px;
-        Rectangle {
-            background: Theme.surface-container-high;
-            border-radius: Theme.corner-medium;
-            VerticalLayout {
-                padding: 8px;
-                spacing: 2px;
-                if EditorBridge.can-add-build: PillButton {
-                    text: "Build";
-                    clicked => { add-action-menu.close(); root.add-action("build"); }
-                }
-                if EditorBridge.can-add-run: PillButton {
-                    text: "Run";
-                    clicked => { add-action-menu.close(); root.add-action("run"); }
-                }
-                if EditorBridge.can-add-build-run: PillButton {
-                    text: "Build + Run";
-                    clicked => { add-action-menu.close(); root.add-action("buildRun"); }
-                }
-                PillButton {
-                    text: "Custom action";
-                    clicked => { add-action-menu.close(); root.add-action("custom"); }
-                }
+        MenuSurface {
+            dismissed => { add-action-menu.close(); }
+            if EditorBridge.can-add-build: MenuEntry {
+                first: true;
+                text: "Build";
+                icon: Icons.build;
+                clicked => { root.add-action("build"); add-action-menu.close(); }
+            }
+            if EditorBridge.can-add-run: MenuEntry {
+                first: !EditorBridge.can-add-build;
+                text: "Run";
+                icon: Icons.play;
+                clicked => { root.add-action("run"); add-action-menu.close(); }
+            }
+            if EditorBridge.can-add-build-run: MenuEntry {
+                first: !EditorBridge.can-add-build && !EditorBridge.can-add-run;
+                text: "Build + Run";
+                icon: Icons.rocket;
+                clicked => { root.add-action("buildRun"); add-action-menu.close(); }
+            }
+            MenuEntry {
+                first: !EditorBridge.can-add-build && !EditorBridge.can-add-run && !EditorBridge.can-add-build-run;
+                last: true;
+                text: "Custom action";
+                icon: Icons.terminal;
+                clicked => { root.add-action("custom"); add-action-menu.close(); }
             }
         }
     }
@@ -793,7 +801,8 @@ export component SettingsPage inherits Rectangle {
                                             first: true;
                                             last: false;
                                             label: "Theme";
-                                            ComboBox {
+                                            Dropdown {
+                                                accessible-label: "Theme";
                                                 width: 200px;
                                                 model: ["Follow Windows", "Light", "Dark"];
                                                 current-index <=> theme-index;
@@ -807,7 +816,8 @@ export component SettingsPage inherits Rectangle {
                                             last: true;
                                             label: "Console theme";
                                             hint: "Only output views; Follow uses the theme selected for the UI.";
-                                            ComboBox {
+                                            Dropdown {
+                                                accessible-label: "Console theme";
                                                 width: 200px;
                                                 model: ["Follow UI", "Light", "Dark"];
                                                 current-index <=> console-theme-index;
@@ -825,7 +835,8 @@ export component SettingsPage inherits Rectangle {
                                             first: true;
                                             last: false;
                                             label: "Floating icon size";
-                                            ComboBox {
+                                            Dropdown {
+                                                accessible-label: "Floating icon size";
                                                 width: 200px;
                                                 model: ["Small (40 px)", "Medium (56 px)", "Large (72 px)"];
                                                 current-index <=> icon-size-index;
@@ -970,7 +981,8 @@ export component SettingsPage inherits Rectangle {
                                             first: true;
                                             last: true;
                                             label: "When the app is still running";
-                                            ComboBox {
+                                            Dropdown {
+                                                accessible-label: "Default when the app is still running";
                                                 width: 200px;
                                                 model: ["Ask", "Reject", "Stop and restart", "Run in parallel"];
                                                 current-index <=> when-running-index;
@@ -1169,7 +1181,8 @@ export component SettingsPage inherits Rectangle {
                                             last: true;
                                             label: "MCP access";
                                             hint: mcp-index == 0 ? "Every agent request is refused." : mcp-index == 1 ? "Agents can read apps and runs. RunBay asks before an agent runs, stops, or changes anything." : "Agents can run, stop, and change apps and actions without asking.";
-                                            ComboBox {
+                                            Dropdown {
+                                                accessible-label: "MCP access";
                                                 width: 200px;
                                                 model: ["Off", "Ask first", "Unrestricted"];
                                                 current-index <=> mcp-index;
@@ -1250,12 +1263,14 @@ export component HistoryFlyout inherits Rectangle {
         }
         HorizontalLayout {
             spacing: 6px;
-            ComboBox {
+            Dropdown {
+                accessible-label: "Filter by app";
                 model: app-filters;
                 current-index <=> app-filter;
                 selected => { root.filters-changed(); }
             }
-            ComboBox {
+            Dropdown {
+                accessible-label: "Filter by action";
                 model: action-filters;
                 current-index <=> action-filter;
                 selected => { root.filters-changed(); }

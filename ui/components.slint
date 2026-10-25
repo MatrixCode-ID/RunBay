@@ -21,6 +21,269 @@ export component FocusRing inherits Rectangle {
         easing: ease-out;
     }
 }
+// Standard-color M3 Expressive vertical menus, shared by actions and selectors.
+export component MenuSurface inherits Rectangle {
+    in property <length> item-spacing: 2px;
+    // Forward the layout height through the focus scope to the popup's hit bounds.
+    min-height: menu-layout.min-height;
+    preferred-height: menu-layout.preferred-height;
+    border-radius: Theme.corner-large;
+    background: Theme.surface-container-low;
+    drop-shadow-blur: 8px;
+    drop-shadow-offset-y: 2px;
+    drop-shadow-color: #00000040;
+    callback dismissed();
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.dismissed(); return accept; }
+            return reject;
+        }
+        menu-layout := VerticalLayout {
+            padding: 2px;
+            spacing: root.item-spacing;
+            alignment: start;
+            @children
+        }
+    }
+}
+
+export component MenuEntry inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: true;
+    in property <bool> colorize-icon: true;
+    in property <bool> danger;
+    in property <bool> selected;
+    in property <bool> checkable;
+    in property <bool> highlighted;
+    in property <bool> first;
+    in property <bool> last;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 48px;
+    min-width: 112px;
+    vertical-stretch: 0;
+    border-top-left-radius: selected || first ? 12px : 4px;
+    border-top-right-radius: self.border-top-left-radius;
+    border-bottom-left-radius: selected || last ? 12px : 4px;
+    border-bottom-right-radius: self.border-bottom-left-radius;
+    background: selected ? Theme.tertiary-container : transparent;
+    property <color> foreground: selected ? Theme.on-tertiary-container : danger ? Theme.error : Theme.on-surface;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-enabled: enabled;
+    accessible-checkable: checkable;
+    accessible-checked: selected;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    forward-focus: keys;
+    Rectangle {
+        border-radius: parent.border-radius;
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
+        background: root.foreground.with-alpha(!root.enabled ? 0 : touch.pressed ? 0.12
+            : keys.has-focus || root.highlighted ? 0.1 : touch.has-hover ? 0.08 : 0);
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        opacity: root.enabled ? 1 : 0.38;
+        if root.has-icon: Image {
+            source: root.icon;
+            width: 20px;
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+            colorize: !root.colorize-icon ? transparent : root.selected || root.danger ? root.foreground : Theme.on-surface-variant;
+        }
+        Text {
+            text: root.text;
+            color: root.foreground;
+            font-size: Theme.label-large;
+            font-weight: 500;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if root.selected: Image {
+            source: Icons.check;
+            width: 20px;
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+            colorize: root.foreground;
+        }
+        @children
+    }
+    FocusRing {
+        width: parent.width + 2 * self.offset;
+        height: parent.height + 2 * self.offset;
+        active: keys.has-focus || root.highlighted;
+        radius: 12px;
+        offset: -3px;
+    }
+    keys := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return { root.clicked(); return accept; }
+            return reject;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// An outlined selector whose popup uses the same Expressive menu as app actions.
+export component Dropdown inherits Rectangle {
+    in property <[string]> model;
+    in-out property <int> current-index;
+    out property <string> current-value: current-index >= 0 && current-index < model.length ? model[current-index] : "";
+    in property <bool> enabled: true;
+    in property <length> menu-width: max(root.width, 240px);
+    property <int> active-index;
+    property <bool> keyboard-open;
+    // Popup visibility also covers automatic dismissal without a focus event.
+    out property <bool> expanded: menu.is-open;
+    property <length> popup-scroll-y;
+    callback selected(string);
+    height: 48px;
+    min-width: 64px;
+    preferred-width: 200px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    border-radius: Theme.corner-extra-small;
+    border-width: keys.has-focus || expanded ? 2px : 1px;
+    border-color: keys.has-focus || expanded ? Theme.primary : Theme.outline;
+    opacity: enabled ? 1 : 0.38;
+    accessible-role: combobox;
+    accessible-enabled: enabled;
+    accessible-value: current-value;
+    accessible-expandable: true;
+    accessible-expanded: expanded;
+    accessible-action-expand => { root.open(false); }
+    forward-focus: keys;
+
+    changed model => { current-index = clamp(current-index, 0, max(0, model.length - 1)); }
+
+    function open(keyboard: bool) {
+        if enabled && model.length > 0 {
+            active-index = clamp(current-index, 0, model.length - 1);
+            keyboard-open = keyboard;
+            popup-scroll-y = -max(0, active-index - 5) * 50px;
+            menu.show();
+        }
+    }
+    function dismiss() { menu.close(); if keyboard-open { keys.focus(); } }
+    function choose(index: int) {
+        if enabled && index >= 0 && index < model.length {
+            current-index = index;
+            root.selected(model[index]);
+            root.dismiss();
+        }
+    }
+    function move(delta: int) {
+        keyboard-open = true;
+        active-index = clamp(active-index + delta, 0, model.length - 1);
+        if active-index * 50px + popup-scroll-y < 0px {
+            popup-scroll-y = -active-index * 50px;
+        } else if (active-index + 1) * 50px + popup-scroll-y > min(6, model.length) * 50px - 2px {
+            popup-scroll-y = min(6, model.length) * 50px - 2px - (active-index + 1) * 50px;
+        }
+    }
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 12px;
+        spacing: 8px;
+        Text {
+            text: root.current-value;
+            color: Theme.on-surface;
+            font-size: Theme.body-large;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Image {
+            source: Icons.expand-more;
+            width: 24px;
+            height: 24px;
+            y: (parent.height - self.height) / 2;
+            colorize: Theme.on-surface-variant;
+            transform-rotation: root.expanded ? 180deg : 0deg;
+            animate transform-rotation { duration: Theme.motion-fast; }
+        }
+    }
+    FocusRing {
+        width: parent.width + 2 * self.offset;
+        height: parent.height + 2 * self.offset;
+        active: keys.has-focus;
+        radius: root.border-radius;
+    }
+    keys := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == Key.Space || event.text == Key.DownArrow || event.text == Key.UpArrow {
+                root.open(true); return accept;
+            }
+            return reject;
+        }
+    }
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.open(false); }
+    }
+    menu := PopupWindow {
+        y: root.height + 4px;
+        width: root.menu-width;
+        height: min(6, root.model.length) * 50px + 2px;
+        close-policy: close-on-click-outside;
+        forward-focus: menu-keys;
+        MenuSurface {
+            dismissed => { root.dismiss(); }
+        }
+        menu-keys := FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.DownArrow { root.move(1); return accept; }
+                if event.text == Key.UpArrow { root.move(-1); return accept; }
+                if event.text == Key.Home { root.move(-root.model.length); return accept; }
+                if event.text == Key.End { root.move(root.model.length); return accept; }
+                if event.text == Key.Return || event.text == Key.Space { root.choose(root.active-index); return accept; }
+                if event.text == Key.Escape { root.dismiss(); return accept; }
+                if event.text == Key.Tab { root.dismiss(); return reject; }
+                return reject;
+            }
+            choices := Flickable {
+                x: 2px;
+                y: 2px;
+                width: parent.width - 4px;
+                height: parent.height - 4px;
+                content-width: self.width;
+                content-y <=> root.popup-scroll-y;
+                interactive: root.model.length > 6;
+                VerticalLayout {
+                    spacing: 2px;
+                    for value[index] in root.model: MenuEntry {
+                        text: value;
+                        has-icon: false;
+                        selected: index == root.current-index;
+                        checkable: true;
+                        highlighted: root.keyboard-open && index == root.active-index;
+                        first: index == 0;
+                        last: index == root.model.length - 1;
+                        clicked => { root.choose(index); }
+                    }
+                }
+            }
+        }
+    }
+}
+
 export component FilterChip inherits Rectangle {
     in property <string> text;
     in property <bool> selected;
@@ -1168,49 +1431,26 @@ export component ActionBar inherits Rectangle {
         x: max(0px, root.direct-count * (root.size + root.gap) - 180px);
         y: root.height;
         width: 220px;
-        Rectangle {
-            background: Theme.surface-container-high;
-            border-radius: Theme.corner-small;
-            VerticalLayout {
-                padding: 6px;
-                spacing: 0px;
-                for action[index] in root.actions: Rectangle {
-                    visible: index >= root.direct-count;
-                    height: index >= root.direct-count ? 36px : 0px;
-                    opacity: action.enabled ? 1 : 0.38;
-                    border-radius: 6px;
-                    background: item-touch.has-hover ? Theme.surface-container-highest : transparent;
-                    accessible-role: button;
-                    accessible-label: action.name;
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        padding-right: 8px;
-                        spacing: 8px;
-                        Image {
-                            source: action.has-image ? action.image : Icons.action-icon(action.icon-name);
-                            width: 18px;
-                            height: 18px;
-                            y: (parent.height - self.height) / 2;
-                            colorize: action.has-image ? transparent : Theme.on-surface-variant;
-                        }
-                        Text {
-                            text: action.name;
-                            color: Theme.on-surface;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            horizontal-stretch: 1;
-                        }
-                        if action.status == "running": StatusBadge {
-                            status: action.status;
-                            busy: action.busy;
-                            agent: action.agent;
-                        }
+        MenuSurface {
+            dismissed => { overflow-menu.close(); }
+            item-spacing: 0px;
+            for action[index] in root.actions: Rectangle {
+                height: index < root.direct-count ? 0px : index == root.actions.length - 1 ? 48px : 50px;
+                visible: index >= root.direct-count;
+                if index >= root.direct-count: MenuEntry {
+                    first: index == root.direct-count;
+                    last: index == root.actions.length - 1;
+                    text: action.name;
+                    icon: action.has-image ? action.image : Icons.action-icon(action.icon-name);
+                    colorize-icon: !action.has-image;
+                    enabled: action.enabled;
+                    if action.status == "running": StatusBadge {
+                        status: action.status;
+                        busy: action.busy;
+                        agent: action.agent;
                     }
-                    item-touch := TouchArea {
-                        enabled: action.enabled;
-                        mouse-cursor: pointer;
-                        clicked => { overflow-menu.close(); root.triggered(action.id); }
-                    }
+                    // Dispatch before closing: closing destroys the popup's parent links.
+                    clicked => { root.triggered(action.id); overflow-menu.close(); }
                 }
             }
         }
