@@ -263,6 +263,9 @@ Different apps may always run in parallel.
   lines, Shift+arrows / Shift+Home / Shift+End extend the focus, and Escape clears
   the selection. Ctrl+C without a selection does nothing and never stops a run.
   Right-click offers Copy (enabled with a selection) and Select all.
+- When output overflows horizontally, a dedicated 20 px scrollbar lane sits
+  below the text viewport in Full and Compact/Icon output views. Its whole
+  height accepts dragging, uses an arrow cursor, and never starts text selection.
 - Copying a selection strips ANSI codes and joins lines with `\r\n`; an end
   position at column zero excludes that empty final line. Selection positions
   use stable run-line indices and character columns, clamped when the ring
@@ -344,12 +347,16 @@ restored only after its native frame has been initialized.
 └──────────────┴───────────────────────────────────┴─────────────┘
 ```
 
-- **Navigation**: apps grouped by group. In v1 they are reordered with *Move
-  up* / *Move down* in the app menu and moved between groups by choosing the
-  group in the editor; drag and drop is a later idea
-  ([drag-reorder](ideas/drag-reorder.md)). Each app shows its icon, name, badge, Build / Run / Build+Run
+- **Navigation**: apps grouped by group. Dragging starts only from the app icon
+  and reorders cards within the same group in Full, Compact, and the Icon app
+  list. A line marks the insertion position, edge dragging scrolls the list,
+  and dropping saves the order. A click or cancelled/outside drop leaves the
+  order unchanged. *Move up* / *Move down* remain in the Full app menu; moving
+  between groups uses the editor. Each app shows its icon, name, badge, Build / Run / Build+Run
   buttons for all configured actions. Below the app, its active/last runs are
   listed; selecting one shows its output in the Output panel.
+- Card header More buttons share a fixed trailing position; app names and agent
+  chips elide to fit without shifting the status badge or More button.
 - **Output**: output of the selected run (live while running). Multiple active
   runs are shown as tabs.
 - Action controls use consistently sized, centered icon-only buttons with action
@@ -470,6 +477,9 @@ actions; existing actions are edited in the app editor.
 The page heading is title-large; category headings are title-medium. Content is
 left-aligned in a column no wider than 720 px. Navigation uses 48 px pill
 indicators; Tab traverses controls and Up/Down selects adjacent categories.
+Categories and editor action rows select on the first mouse click without
+acquiring keyboard focus. Repeated Up/Down presses in the editor retain focus
+and scroll the selected action into view.
 Each titled group is an Expressive segmented list: 2 px gaps, 16 px outer
 corners, 4 px inner corners, surface-colored items, 16 px horizontal insets,
 body-large labels and optional body-small hints. Density -2 minimum heights

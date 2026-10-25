@@ -215,3 +215,6 @@ RunBay will be published as open source under the **MIT license**.
 - Public items get English doc comments that explain what they do and why.
 - Respect the performance targets in the specification (fast startup, low
   memory, no redraw or polling while idle).
+- App cards support drag reordering within their group. Dragging starts only
+  from the app icon; other card content keeps its existing controls and text
+  behavior (user decision 2026-10-25). See specification §6.1.

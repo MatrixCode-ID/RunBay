@@ -125,6 +125,7 @@ pub fn run(options: Options, listener: PipeListener) -> Result<()> {
     controller.reload_apps();
     controller.bind_callbacks(&window);
     controller.bind_editor();
+    controller.bind_app_drag();
     controller.bind_settings();
     controller.bind_history();
     controller.bind_close();
@@ -1065,6 +1066,7 @@ impl Controller {
             icon,
             has_icon,
             group_header: group_header.into(),
+            group_id: app.group.clone().into(),
             status: status.into(),
             status_agent,
             status_busy: active_infos.iter().any(|info| info.is_busy()),

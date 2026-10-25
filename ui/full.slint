@@ -2,8 +2,8 @@
 
 import { ListView, LineEdit, TextEdit, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, TooltipContent, OutputView, ConsoleThemeButton, TitleBar } from "components.slint";
-import { Span, OutputRow, ActionButton, RunRow, AppRow, Clock } from "types.slint";
+import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, AppDragHandle, AppDropIndicator, DialogFrame, PillButton, TooltipContent, OutputView, ConsoleThemeButton, TitleBar } from "components.slint";
+import { Span, OutputRow, ActionButton, RunRow, AppRow, Clock, AppDrag } from "types.slint";
 import { EditorPage, SettingsPage, HistoryFlyout, AboutDialog } from "pages.slint";
 
 component MenuItem inherits Rectangle {
@@ -67,16 +67,23 @@ component AppCard inherits Rectangle {
     VerticalLayout {
         padding: 10px;
         spacing: 6px;
-        HorizontalLayout {
-            spacing: 10px;
-            Avatar {
+        Rectangle {
+            height: max(32px, header-labels.preferred-height);
+            AppDragHandle {
+                x: 0px;
+                y: 0px;
+                app-id: app.id;
+                group-id: app.group-id;
+                draggable: app.error == "";
                 icon: app.icon;
                 has-icon: app.has-icon;
                 initial: app.initial;
                 size: 32px;
             }
-            VerticalLayout {
-                horizontal-stretch: 1;
+            header-labels := VerticalLayout {
+                x: 42px;
+                width: max(0px, header-status.x - self.x - 10px);
+                height: parent.height;
                 alignment: center;
                 Text {
                     text: app.name;
@@ -85,9 +92,13 @@ component AppCard inherits Rectangle {
                     color: Theme.on-surface;
                     overflow: elide;
                 }
-                if app.agent != "": AgentChip { agent: app.agent; }
+                if app.agent != "": AgentChip {
+                    agent: app.agent;
+                    width: min(parent.width, self.preferred-width);
+                }
             }
-            StatusBadge {
+            header-status := StatusBadge {
+                x: menu-button.x - self.width - (self.width > 0px ? 10px : 0px);
                 status: app.status;
                 busy: app.status-busy;
                 agent: app.status-agent;
@@ -95,6 +106,7 @@ component AppCard inherits Rectangle {
                 y: (parent.height - self.height) / 2;
             }
             menu-button := SymbolButton {
+                x: parent.width - self.width;
                 icon: Icons.more-vert;
                 tooltip: "More";
                 size: 32px;
@@ -163,6 +175,8 @@ component AppCard inherits Rectangle {
             }
         }
     }
+
+    AppDropIndicator { app-id: app.id; group-id: app.group-id; accepts-drop: app.error == ""; }
 
     app-menu := PopupWindow {
         x: menu-button.x + menu-button.width - 220px;
@@ -411,7 +425,14 @@ export component MainWindow inherits Window {
                         clicked => { root.open-settings(); }
                     }
                 }
-                ListView {
+                app-list := ListView {
+                    property <bool> dragging: AppDrag.source != "";
+                    changed dragging => {
+                        if self.dragging {
+                            AppDrag.viewport-top = self.absolute-position.y;
+                            AppDrag.viewport-bottom = self.absolute-position.y + self.visible-height;
+                        }
+                    }
                     vertical-stretch: 1;
                     for app in apps: VerticalLayout {
                         padding-left: 12px;
@@ -437,6 +458,17 @@ export component MainWindow inherits Window {
                             open-data-folder(a) => { root.open-data-folder(a); }
                             move-app(a, d) => { root.move-app(a, d); }
                         }
+                    }
+                }
+                Timer {
+                    interval: 40ms;
+                    running: AppDrag.source != "" && AppDrag.pointer-x >= app-list.absolute-position.x
+                        && AppDrag.pointer-x < app-list.absolute-position.x + app-list.visible-width
+                        && (AppDrag.pointer-y < app-list.absolute-position.y + 24px
+                            || AppDrag.pointer-y > app-list.absolute-position.y + app-list.visible-height - 24px);
+                    triggered => {
+                        app-list.content-y = clamp(app-list.content-y + (AppDrag.pointer-y < app-list.absolute-position.y + 24px ? 12px : -12px),
+                            min(0px, app-list.visible-height - app-list.content-height), 0px);
                     }
                 }
                 HorizontalLayout {

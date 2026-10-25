@@ -23,3 +23,8 @@ which was left out of v1 to keep the first release focused.
 
 - Should a drop between two groups also be possible onto a collapsed group header?
 - Should the order of groups themselves be draggable, or set in a small group manager?
+- 2026-10-25: the user requested icon-only drag reordering. Full, Compact, and
+  the Icon app list now reorder within a group, with an insertion marker and
+  edge auto-scroll. Other card content does not start a drag. This was a direct
+  implementation request; no execution plan was needed. Cross-group dragging
+  and group reordering remain under discussion.

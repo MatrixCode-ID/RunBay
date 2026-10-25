@@ -365,7 +365,7 @@ export component EditorPage inherits Rectangle {
                         height: 32px;
                         vertical-alignment: center;
                     }
-                    ListView {
+                    action-list := ListView {
                         vertical-stretch: 1;
                         for action[index] in actions: KeyboardRow {
                             accessible-label: action.name;
@@ -374,6 +374,14 @@ export component EditorPage inherits Rectangle {
                             moved(delta) => {
                                 root.action-focus = clamp(index + delta, 0, root.actions.length - 1);
                                 root.select-action(root.action-focus);
+                            }
+                            changed focus-request => {
+                                if self.focus-request {
+                                    if self.y + action-list.content-y < 0px { action-list.content-y = -self.y; }
+                                    if self.y + self.height + action-list.content-y > action-list.visible-height {
+                                        action-list.content-y = action-list.visible-height - self.y - self.height;
+                                    }
+                                }
                             }
                             height: 40px;
                             border-radius: 20px;

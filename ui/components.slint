@@ -2,7 +2,7 @@
 
 import { Theme, Icons } from "theme.slint";
 import { ListView } from "std-widgets.slint";
-import { OutputRow, ActionButton } from "types.slint";
+import { OutputRow, ActionButton, AppDrag } from "types.slint";
 
 // Shared keyboard focus indicator. List rows use an inward offset of -3px.
 export component FocusRing inherits Rectangle {
@@ -238,6 +238,7 @@ export component KeyboardRow inherits Rectangle {
         offset: -3px;
     }
     keys := FocusScope {
+        focus-on-click: false;
         key-pressed(event) => {
             if event.text == Key.Return || event.text == Key.Space {
                 root.activated();
@@ -456,6 +457,7 @@ export component OutputView inherits Rectangle {
     property <bool> selected: popup ? OutputBridge.popup-selected : OutputBridge.full-selected;
     property <int> focus-row: popup ? OutputBridge.popup-focus : OutputBridge.full-focus;
     property <length> char-width: max(1px, measure.preferred-width);
+    property <bool> horizontal-overflow: columns * char-width + 2 * side-padding > list.visible-width;
     forward-focus: keys;
     clip: true;
 
@@ -509,6 +511,8 @@ export component OutputView inherits Rectangle {
         font-size: root.font-size;
     }
     list := ListView {
+        height: root.height - (root.horizontal-overflow ? 20px : 0px);
+        horizontal-scrollbar-policy: always-off;
         content-width: max(self.visible-width, root.columns * root.char-width + 2 * root.side-padding);
         for row in root.rows: Rectangle {
             height: root.row-height;
@@ -596,6 +600,46 @@ export component OutputView inherits Rectangle {
             Menu {
                 MenuItem { title: "Copy"; enabled: root.selected; activated => { root.copy-selection(); } }
                 MenuItem { title: "Select all"; activated => { keys.focus(); root.select-all(); } }
+            }
+        }
+    }
+    // A dedicated lane keeps the entire drag target outside text selection.
+    horizontal-bar := Rectangle {
+        visible: root.horizontal-overflow;
+        y: list.height;
+        width: list.visible-width;
+        height: 20px;
+        background: Theme.console-text.with-alpha(0.06);
+        property <length> maximum: max(0px, list.content-width - list.visible-width);
+        property <length> thumb-width: min(self.width, max(32px, self.width * list.visible-width / list.content-width));
+        Rectangle {
+            x: horizontal-bar.maximum > 0px ? -list.content-x / horizontal-bar.maximum * (parent.width - self.width) : 0px;
+            y: 6px;
+            height: 8px;
+            width: horizontal-bar.thumb-width;
+            border-radius: 4px;
+            background: Theme.console-text.with-alpha(bar-touch.pressed ? 0.65 : bar-touch.has-hover ? 0.5 : 0.35);
+        }
+        bar-touch := TouchArea {
+            property <length> start-x;
+            property <length> start-offset;
+            mouse-cursor: default;
+            pointer-event(event) => {
+                if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                    self.start-x = self.mouse-x;
+                    self.start-offset = list.content-x;
+                }
+            }
+            moved => {
+                if self.pressed {
+                    list.content-x = clamp(self.start-offset - (self.mouse-x - self.start-x)
+                        * horizontal-bar.maximum / max(1px, horizontal-bar.width - horizontal-bar.thumb-width),
+                        -horizontal-bar.maximum, 0px);
+                }
+            }
+            scroll-event(event) => {
+                list.content-x = clamp(list.content-x + event.delta-x + event.delta-y, -horizontal-bar.maximum, 0px);
+                return accept;
             }
         }
     }
@@ -944,6 +988,8 @@ export component AgentChip inherits Rectangle {
         }
         Text {
             text: "by " + agent;
+            overflow: elide;
+            min-width: 0px;
             color: Theme.on-tertiary-container;
             font-size: Theme.label-small;
             vertical-alignment: center;
@@ -1168,5 +1214,66 @@ export component ActionBar inherits Rectangle {
                 }
             }
         }
+    }
+}
+
+// Only this avatar can start an app reorder; the rest of the card stays interactive.
+export component AppDragHandle inherits Avatar {
+    in property <string> app-id;
+    in property <string> group-id;
+    in property <bool> draggable: true;
+    TouchArea {
+        enabled: root.draggable;
+        mouse-cursor: self.pressed ? grabbing : grab;
+        property <length> press-x;
+        property <length> press-y;
+        pointer-event(event) => {
+            if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                self.press-x = self.mouse-x;
+                self.press-y = self.mouse-y;
+            }
+            if event.kind == PointerEventKind.cancel { AppDrag.cancel(); }
+            if event.button == PointerEventButton.left && event.kind == PointerEventKind.up { AppDrag.finish(); }
+        }
+        moved => {
+            if self.pressed {
+                if AppDrag.source == "" && (abs(self.mouse-y - self.press-y) > 6px || abs(self.mouse-x - self.press-x) > 6px) {
+                    AppDrag.group = root.group-id;
+                    AppDrag.source = root.app-id;
+                }
+                AppDrag.pointer-x = self.absolute-position.x + self.mouse-x;
+                AppDrag.pointer-y = self.absolute-position.y + self.mouse-y;
+            }
+        }
+    }
+    Tooltip { TooltipContent { text: "Drag to reorder within group"; } }
+}
+
+// Visual drop position only; never covers the card's buttons or text.
+export component AppDropIndicator inherits Rectangle {
+    in property <string> app-id;
+    in property <string> group-id;
+    in property <bool> accepts-drop: true;
+    property <bool> under-pointer: accepts-drop && AppDrag.source != "" && AppDrag.group == group-id
+        && AppDrag.pointer-y >= AppDrag.viewport-top && AppDrag.pointer-y < AppDrag.viewport-bottom
+        && AppDrag.pointer-x >= self.absolute-position.x && AppDrag.pointer-x < self.absolute-position.x + self.width
+        && AppDrag.pointer-y >= self.absolute-position.y && AppDrag.pointer-y < self.absolute-position.y + self.height;
+    property <bool> insert-after: AppDrag.pointer-y >= self.absolute-position.y + self.height / 2;
+    changed under-pointer => {
+        if under-pointer { AppDrag.target = app-id; AppDrag.after = insert-after; }
+        else if AppDrag.target == app-id { AppDrag.target = ""; }
+    }
+    changed insert-after => {
+        if under-pointer { AppDrag.target = app-id; AppDrag.after = insert-after; }
+    }
+    border-radius: Theme.corner-large;
+    border-width: AppDrag.source == app-id ? 2px : 0px;
+    border-color: Theme.primary;
+    Rectangle {
+        visible: AppDrag.source != "" && AppDrag.source != root.app-id && AppDrag.target == root.app-id;
+        y: AppDrag.after ? parent.height - 3px : 0px;
+        height: 3px;
+        border-radius: 1.5px;
+        background: Theme.primary;
     }
 }

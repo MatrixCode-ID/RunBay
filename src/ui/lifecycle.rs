@@ -304,6 +304,68 @@ impl Controller {
         self.report(result);
     }
 
+    /// Connects icon drag-and-drop in every app list to the persisted app order.
+    pub(super) fn bind_app_drag(self: &Rc<Self>) {
+        let ui = self.ui();
+        for drag in [
+            ui.global::<crate::AppDrag>(),
+            self.modes.compact.global::<crate::AppDrag>(),
+            self.modes.icon.global::<crate::AppDrag>(),
+            self.modes.popup.global::<crate::AppDrag>(),
+        ] {
+            let weak = Rc::downgrade(self);
+            drag.on_reordered(move |source, target, after| {
+                if let Some(c) = weak.upgrade() {
+                    c.reorder_app(&source, &target, after);
+                }
+            });
+        }
+    }
+
+    /// Inserts a dragged app before or after another app in the same group.
+    fn reorder_app(&self, source: &str, target: &str, after: bool) {
+        if source == target {
+            return;
+        }
+        let Some(app) = self.app(source) else { return };
+        let Some(destination) = self.app(target) else {
+            return;
+        };
+        if app.group != destination.group {
+            return;
+        }
+        let mut apps: Vec<_> = self
+            .state
+            .borrow()
+            .apps
+            .iter()
+            .filter_map(|row| match row {
+                LoadedApp::Ok(a) if a.group == app.group => Some(a.clone()),
+                _ => None,
+            })
+            .collect();
+        apps.sort_by_key(|a| a.order);
+        let Some(index) = apps.iter().position(|a| a.id == source) else {
+            return;
+        };
+        let moved = apps.remove(index);
+        let Some(index) = apps.iter().position(|a| a.id == target) else {
+            return;
+        };
+        apps.insert(index + usize::from(after), moved);
+        for (index, app) in apps.iter_mut().enumerate() {
+            let order = (index as i32 + 1) * 10;
+            if app.order != order {
+                app.order = order;
+                if let Err(e) = self.store.save_app(app) {
+                    self.snackbar(format!("{e:#}"));
+                    break;
+                }
+            }
+        }
+        self.reload_apps();
+    }
+
     /// Moves an app up (`-1`) or down (`1`) within its group.
     pub(super) fn move_app(&self, id: &str, delta: i32) {
         let Some(app) = self.app(id) else { return };

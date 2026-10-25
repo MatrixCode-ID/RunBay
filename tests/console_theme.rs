@@ -106,6 +106,44 @@ fn console_palettes_render_independently_in_full_and_output_popups() {
         }
     }
 
+    // The full 20 px scrollbar lane must drag without starting text selection,
+    // including above/below the visible 8 px thumb and with very long lines.
+    full.set_output_columns(1000);
+    let selection_events = Rc::new(Cell::new(0));
+    let calls = selection_events.clone();
+    full.global::<OutputBridge>()
+        .on_selection_event(move |_, _, _, _, _| calls.set(calls.get() + 1));
+    for y in [669.0, 678.0, 687.0] {
+        full.invoke_scroll_to_end();
+        let before = render(&full_window, "scrollbar-before-drag");
+        full_window.dispatch_event(WindowEvent::PointerPressed {
+            position: slint::LogicalPosition::new(350.0, y),
+            button: PointerEventButton::Left,
+        });
+        full_window.dispatch_event(WindowEvent::PointerMoved {
+            position: slint::LogicalPosition::new(650.0, y),
+        });
+        full_window.dispatch_event(WindowEvent::PointerReleased {
+            position: slint::LogicalPosition::new(650.0, y),
+            button: PointerEventButton::Left,
+        });
+        let after = render(&full_window, "scrollbar-after-drag");
+        let span = rows.row_data(0).unwrap().spans.row_data(0).unwrap();
+        assert!(color_count(&before, span.dark_color) > 5);
+        assert_eq!(
+            color_count(&after, span.dark_color),
+            0,
+            "Scrollbar must move text at y={y}"
+        );
+        assert_eq!(
+            selection_events.get(),
+            0,
+            "Scrollbar must not select text at y={y}"
+        );
+    }
+    full.set_output_columns(18);
+    full.invoke_scroll_to_end();
+
     let compact = CompactWindow::new().unwrap();
     let compact_window = windows.borrow().last().unwrap().clone();
     compact_window.set_size(PhysicalSize::new(360, 420));

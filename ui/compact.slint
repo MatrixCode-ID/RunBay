@@ -2,8 +2,8 @@
 
 import { ListView, Palette } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, OutputView, OutputBridge, ConsoleThemeButton } from "components.slint";
-import { Span, OutputRow, ActionButton, RunRow, AppRow, Clock } from "types.slint";
+import { ActionBar, SymbolButton, StatusBadge, AgentChip, Avatar, AppDragHandle, AppDropIndicator, OutputView, OutputBridge, ConsoleThemeButton } from "components.slint";
+import { Span, OutputRow, ActionButton, RunRow, AppRow, Clock, AppDrag } from "types.slint";
 
 // Data and callbacks shared by the Compact window and the Icon popup.
 export global MiniBridge {
@@ -109,7 +109,10 @@ component MiniAppRow inherits Rectangle {
         padding-left: 8px;
         padding-right: 6px;
         spacing: 8px;
-        Avatar {
+        AppDragHandle {
+            app-id: app.id;
+            group-id: app.group-id;
+            draggable: app.error == "";
             icon: app.icon;
             has-icon: app.has-icon;
             initial: app.initial;
@@ -173,17 +176,35 @@ component MiniAppRow inherits Rectangle {
         }
     }
 
+    AppDropIndicator { app-id: app.id; group-id: app.group-id; accepts-drop: app.error == ""; }
 }
 
 // The app list with its output popup, used by Compact mode and the Icon popup.
 component AppList inherits Rectangle {
-    ListView {
+    list := ListView {
+        property <bool> dragging: AppDrag.source != "";
+        changed dragging => {
+            if self.dragging {
+                AppDrag.viewport-top = self.absolute-position.y;
+                AppDrag.viewport-bottom = self.absolute-position.y + self.visible-height;
+            }
+        }
         for app in MiniBridge.apps: MiniAppRow {
             app: app;
             show-output(id) => {
                 MiniBridge.open-output(id);
                 output-popup.show();
             }
+        }
+    }
+    Timer {
+        interval: 40ms;
+        running: AppDrag.source != "" && AppDrag.pointer-x >= list.absolute-position.x
+            && AppDrag.pointer-x < list.absolute-position.x + list.visible-width
+            && (AppDrag.pointer-y < list.absolute-position.y + 24px || AppDrag.pointer-y > list.absolute-position.y + list.visible-height - 24px);
+        triggered => {
+            list.content-y = clamp(list.content-y + (AppDrag.pointer-y < list.absolute-position.y + 24px ? 12px : -12px),
+                min(0px, list.visible-height - list.content-height), 0px);
         }
     }
     output-popup := PopupWindow {

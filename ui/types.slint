@@ -83,6 +83,7 @@ export struct AppRow {
     has-icon: bool,
     // Name of the group when this app is the first of its group, otherwise "".
     group-header: string,
+    group-id: string,
     status: string,
     status-agent: bool,
     status-busy: bool,
@@ -91,4 +92,25 @@ export struct AppRow {
     error: string,
     actions: [ActionButton],
     runs: [RunRow],
+}
+
+// Shared state for icon-only reordering inside an app list.
+export global AppDrag {
+    in-out property <string> source;
+    in-out property <string> group;
+    in-out property <string> target;
+    in-out property <bool> after;
+    in-out property <length> pointer-x;
+    in-out property <length> pointer-y;
+    in-out property <length> viewport-top;
+    in-out property <length> viewport-bottom;
+    callback reordered(string, string, bool);
+    public function cancel() { source = ""; target = ""; }
+    public function finish() {
+        let from = source;
+        let to = target;
+        let insert-after = after;
+        cancel();
+        if from != "" && to != "" && from != to { reordered(from, to, insert-after); }
+    }
 }

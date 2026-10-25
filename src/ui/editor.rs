@@ -274,24 +274,38 @@ impl Controller {
         let g = ui.global::<EditorBridge>();
         let editor = self.editor.borrow();
         let Some(d) = editor.as_ref() else { return };
-        g.set_actions(ModelRc::new(VecModel::from(
-            d.app
-                .actions
-                .iter()
-                .map(|a| {
-                    let image = self.draft_action_image(d, a);
-                    EditorAction {
-                        id: a.id.clone().into(),
-                        name: a.name.clone().into(),
-                        kind: format!("{:?}", a.kind).to_lowercase().into(),
-                        icon_name: a.icon_name().into(),
-                        has_image: image.is_some(),
-                        image: image.unwrap_or_default(),
-                        has_script: d.scripts.get(&a.id).is_some_and(|s| !s.trim().is_empty()),
+        let actions = d
+            .app
+            .actions
+            .iter()
+            .map(|a| {
+                let image = self.draft_action_image(d, a);
+                EditorAction {
+                    id: a.id.clone().into(),
+                    name: a.name.clone().into(),
+                    kind: format!("{:?}", a.kind).to_lowercase().into(),
+                    icon_name: a.icon_name().into(),
+                    has_image: image.is_some(),
+                    image: image.unwrap_or_default(),
+                    has_script: d.scripts.get(&a.id).is_some_and(|s| !s.trim().is_empty()),
+                }
+            })
+            .collect::<Vec<_>>();
+        // Keep delegates (and keyboard focus) alive while switching actions.
+        let model = g.get_actions();
+        if let Some(rows) = model.as_any().downcast_ref::<VecModel<EditorAction>>() {
+            if rows.row_count() == actions.len() {
+                for (index, action) in actions.into_iter().enumerate() {
+                    if rows.row_data(index).as_ref() != Some(&action) {
+                        rows.set_row_data(index, action);
                     }
-                })
-                .collect::<Vec<_>>(),
-        )));
+                }
+            } else {
+                rows.set_vec(actions);
+            }
+        } else {
+            g.set_actions(ModelRc::new(VecModel::from(actions)));
+        }
         g.set_can_add_build(d.app.action_of(ActionKind::Build).is_none());
         g.set_can_add_run(d.app.action_of(ActionKind::Run).is_none());
         g.set_can_add_build_run(d.app.action_of(ActionKind::BuildRun).is_none());
@@ -749,6 +763,374 @@ impl Controller {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn navigation_keeps_single_clicks_and_keyboard_focus() {
+        use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
+        use slint::platform::{Key, Platform, PointerEventButton, WindowAdapter, WindowEvent};
+        use slint::{LogicalPosition, PhysicalSize, Rgb8Pixel};
+        use std::cell::RefCell;
+
+        thread_local! {
+            static TEST_WINDOW: RefCell<Option<Rc<MinimalSoftwareWindow>>> = const { RefCell::new(None) };
+            static TEST_WINDOWS: RefCell<Vec<Rc<MinimalSoftwareWindow>>> = const { RefCell::new(Vec::new()) };
+        }
+        struct Offscreen;
+        impl Platform for Offscreen {
+            fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
+                let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+                TEST_WINDOWS.with(|windows| windows.borrow_mut().push(window.clone()));
+                TEST_WINDOW.with(|slot| {
+                    if slot.borrow().is_none() {
+                        *slot.borrow_mut() = Some(window.clone());
+                    }
+                });
+                Ok(window)
+            }
+        }
+        fn render(ui: &crate::MainWindow) -> Vec<Rgb8Pixel> {
+            std::thread::sleep(std::time::Duration::from_millis(140));
+            slint::platform::update_timers_and_animations();
+            let mut pixels = vec![Rgb8Pixel::default(); 1100 * 736];
+            ui.window().request_redraw();
+            TEST_WINDOW.with(|slot| {
+                slot.borrow().as_ref().unwrap().draw_if_needed(|renderer| {
+                    renderer.render(&mut pixels, 1100);
+                });
+            });
+            let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../.artefacts/RunBay/gui/navigation");
+            std::fs::create_dir_all(&folder).unwrap();
+            let rgb: Vec<_> = pixels.iter().flat_map(|p| [p.r, p.g, p.b]).collect();
+            image::save_buffer(
+                folder.join("latest.png"),
+                &rgb,
+                1100,
+                736,
+                image::ColorType::Rgb8,
+            )
+            .unwrap();
+            pixels
+        }
+        fn key(ui: &crate::MainWindow, key: Key) {
+            let text: SharedString = key.into();
+            ui.window()
+                .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+            ui.window()
+                .dispatch_event(WindowEvent::KeyReleased { text });
+        }
+        fn click(ui: &crate::MainWindow, x: f32, y: f32) {
+            let position = LogicalPosition::new(x, y);
+            for event in [
+                WindowEvent::PointerMoved { position },
+                WindowEvent::PointerPressed {
+                    position,
+                    button: PointerEventButton::Left,
+                },
+                WindowEvent::PointerReleased {
+                    position,
+                    button: PointerEventButton::Left,
+                },
+            ] {
+                ui.window().dispatch_event(event);
+            }
+            ui.window().dispatch_event(WindowEvent::PointerMoved {
+                position: LogicalPosition::new(180.0, 100.0),
+            });
+        }
+        fn matches(pixel: Rgb8Pixel, color: slint::Color) -> bool {
+            (pixel.r, pixel.g, pixel.b) == (color.red(), color.green(), color.blue())
+        }
+        fn selected_y(pixels: &[Rgb8Pixel], color: slint::Color, x: usize) -> f32 {
+            let ys: Vec<_> = (110..650)
+                .filter(|y| matches(pixels[y * 1100 + x], color))
+                .collect();
+            assert!(!ys.is_empty(), "Selected navigation row must be visible");
+            ys.iter().sum::<usize>() as f32 / ys.len() as f32
+        }
+        fn focus_row(ui: &crate::MainWindow, x: std::ops::Range<usize>, y: std::ops::Range<usize>) {
+            let color = ui.global::<crate::Theme>().get_secondary();
+            for _ in 0..80 {
+                key(ui, Key::Tab);
+                let pixels = render(ui);
+                let count = y
+                    .clone()
+                    .flat_map(|y| x.clone().map(move |x| y * 1100 + x))
+                    .filter(|&i| matches(pixels[i], color))
+                    .count();
+                if count > 150 {
+                    return;
+                }
+            }
+            panic!("Tab must reach a navigation row");
+        }
+
+        slint::platform::set_platform(Box::new(Offscreen)).unwrap();
+        let ui = crate::MainWindow::new().unwrap();
+        TEST_WINDOW.with(|slot| {
+            slot.borrow()
+                .as_ref()
+                .unwrap()
+                .set_size(PhysicalSize::new(1100, 736))
+        });
+        ui.invoke_set_theme(1);
+        let folder = tempfile::tempdir().unwrap();
+        let store = crate::data::Store::open(folder.path()).unwrap();
+        let settings =
+            std::sync::Arc::new(std::sync::RwLock::new(crate::data::Settings::default()));
+        let manager = crate::runner::RunManager::new(store.clone(), 1000);
+        let host = crate::ipc::host::Host::new(
+            store.clone(),
+            manager.clone(),
+            settings.clone(),
+            std::sync::Arc::new(crate::ui::agent::HeadlessAgent),
+        );
+        let controller = Rc::new(Controller {
+            window: ui.as_weak(),
+            store,
+            manager,
+            settings,
+            host,
+            state: RefCell::new(super::super::State::default()),
+            editor: RefCell::new(None),
+            tray: RefCell::new(None),
+            modes: super::super::modes::ModeWindows {
+                compact: crate::CompactWindow::new().unwrap(),
+                icon: crate::IconWindow::new().unwrap(),
+                popup: crate::IconPopup::new().unwrap(),
+            },
+            icon_timer: RefCell::new(None),
+            popup_timer: RefCell::new(None),
+            update: RefCell::new(super::super::updates::UpdateUi::default()),
+            update_timer: RefCell::new(None),
+            clock_timer: RefCell::new(None),
+            restart_args: Vec::new(),
+        });
+        controller.bind_editor();
+        ui.show().unwrap();
+        ui.set_page("settings".into());
+        render(&ui);
+        let selected = ui.global::<crate::Theme>().get_secondary_container();
+        let first_y = selected_y(&render(&ui), selected, 100);
+        for index in [3, 0, 4, 1, 2] {
+            let target = first_y + index as f32 * 52.0;
+            click(&ui, 100.0, target);
+            assert!(
+                (selected_y(&render(&ui), selected, 100) - target).abs() < 2.0,
+                "Settings category {index} must select with one click"
+            );
+        }
+        focus_row(&ui, 20..176, 110..390);
+        key(&ui, Key::Return);
+        key(&ui, Key::DownArrow);
+        assert!((selected_y(&render(&ui), selected, 100) - (first_y + 52.0)).abs() < 2.0);
+        key(&ui, Key::UpArrow);
+        key(&ui, Key::Space);
+        assert!((selected_y(&render(&ui), selected, 100) - first_y).abs() < 2.0);
+
+        controller.open_editor(None);
+        let bridge = ui.global::<EditorBridge>();
+        let first_y = selected_y(&render(&ui), selected, 550);
+        click(&ui, 500.0, first_y + 40.0);
+        assert_eq!(
+            bridge.get_selected_action(),
+            1,
+            "Action must select with one click"
+        );
+        for _ in 0..20 {
+            bridge.invoke_add_action("custom".into());
+        }
+        // Return selection to the first row without changing the list model.
+        bridge.invoke_select_action(0);
+        render(&ui);
+        focus_row(&ui, 380..564, 110..650);
+        key(&ui, Key::Return);
+        assert_eq!(bridge.get_selected_action(), 0);
+        let model = bridge.get_actions();
+        for index in 1..23 {
+            key(&ui, Key::DownArrow);
+            assert_eq!(
+                bridge.get_selected_action(),
+                index,
+                "Down must retain focus"
+            );
+            assert_eq!(
+                bridge.get_actions(),
+                model,
+                "Selecting must preserve the model"
+            );
+            assert!(selected_y(&render(&ui), selected, 550) < 650.0);
+        }
+        key(&ui, Key::DownArrow);
+        assert_eq!(bridge.get_selected_action(), 22);
+        for index in (0..22).rev() {
+            key(&ui, Key::UpArrow);
+            assert_eq!(bridge.get_selected_action(), index, "Up must retain focus");
+            render(&ui);
+        }
+        key(&ui, Key::UpArrow);
+        key(&ui, Key::Space);
+        assert_eq!(bridge.get_selected_action(), 0);
+        assert_eq!(bridge.get_error(), "");
+
+        // Exercise real icon hit targets and persistence through the controller.
+        controller.bind_app_drag();
+        let settings = crate::data::Settings::default();
+        for (index, name) in ["Alpha", "Beta", "Gamma"].into_iter().enumerate() {
+            let mut app = AppDef::new(&name.to_lowercase(), name, &settings);
+            app.order = (index as i32 + 1) * 10;
+            controller.store.save_app(&app).unwrap();
+        }
+        ui.set_page("".into());
+        controller.reload_apps();
+        let pixels = render(&ui);
+        let icon_color = ui.global::<crate::Theme>().get_primary_container();
+        let mut icon_centers = Vec::new();
+        let mut band = Vec::new();
+        for y in 100..650 {
+            let count = (22..54)
+                .filter(|x| matches(pixels[y * 1100 + x], icon_color))
+                .count();
+            if count > 10 {
+                band.push(y);
+            } else if !band.is_empty() {
+                icon_centers.push(band.iter().sum::<usize>() as f32 / band.len() as f32);
+                band.clear();
+            }
+        }
+        assert_eq!(
+            icon_centers.len(),
+            3,
+            "Each card must have one icon drag handle"
+        );
+        let order = || {
+            ui.get_apps()
+                .iter()
+                .map(|a| a.id.to_string())
+                .collect::<Vec<_>>()
+        };
+        let drag = |x: f32, from: f32, to: f32| {
+            ui.window().dispatch_event(WindowEvent::PointerPressed {
+                position: LogicalPosition::new(x, from),
+                button: PointerEventButton::Left,
+            });
+            ui.window().dispatch_event(WindowEvent::PointerMoved {
+                position: LogicalPosition::new(x, to),
+            });
+            render(&ui);
+            ui.window().dispatch_event(WindowEvent::PointerReleased {
+                position: LogicalPosition::new(x, to),
+                button: PointerEventButton::Left,
+            });
+            render(&ui);
+        };
+        drag(110.0, icon_centers[0], icon_centers[2] + 20.0);
+        assert_eq!(
+            order(),
+            ["alpha", "beta", "gamma"],
+            "Dragging text must not reorder"
+        );
+        click(&ui, 38.0, icon_centers[0]);
+        assert_eq!(
+            order(),
+            ["alpha", "beta", "gamma"],
+            "An icon click must not reorder"
+        );
+        drag(38.0, icon_centers[0], icon_centers[2] + 20.0);
+        assert_eq!(order(), ["beta", "gamma", "alpha"]);
+        controller.reload_apps();
+        assert_eq!(
+            order(),
+            ["beta", "gamma", "alpha"],
+            "Dropped order must survive reload"
+        );
+        render(&ui);
+        drag(38.0, icon_centers[2], icon_centers[0] - 10.0);
+        assert_eq!(order(), ["alpha", "beta", "gamma"]);
+        drag(38.0, icon_centers[0], 730.0);
+        assert_eq!(
+            order(),
+            ["alpha", "beta", "gamma"],
+            "Outside drop must cancel"
+        );
+        let mut cards = ui.get_apps().iter().collect::<Vec<_>>();
+        cards[0].agent = "A coding agent with a very long display name".into();
+        cards[0].name = "An application with a very long display name".into();
+        cards[0].status = "failed".into();
+        cards[1].status = "stopped".into();
+        ui.set_apps(ModelRc::new(VecModel::from(cards)));
+        let pixels = render(&ui);
+        let color = ui.global::<crate::Theme>().get_on_surface_variant();
+        let more_x = |center: f32| {
+            let xs = ((center as usize - 14)..(center as usize + 14))
+                .flat_map(|y| (245..295).map(move |x| (x, y)))
+                .filter(|&(x, y)| matches(pixels[y * 1100 + x], color))
+                .map(|(x, _)| x)
+                .collect::<Vec<_>>();
+            assert!(!xs.is_empty(), "More icon must stay visible");
+            xs.iter().sum::<usize>() as f32 / xs.len() as f32
+        };
+        // Both headers keep their More icon at the same trailing position.
+        // The second card shifts down by 8 px because the first now has a chip.
+        assert!((more_x(icon_centers[0]) - more_x(icon_centers[1] + 8.0)).abs() < 1.0);
+
+        controller.modes.compact.invoke_set_theme(1);
+        controller.modes.popup.invoke_set_theme(1);
+        controller.modes.compact.show().unwrap();
+        controller.modes.popup.show().unwrap();
+        for index in [1, 3] {
+            let window = TEST_WINDOWS.with(|windows| windows.borrow()[index].clone());
+            window.set_size(PhysicalSize::new(360, 420));
+            let draw = || {
+                slint::platform::update_timers_and_animations();
+                let mut pixels = vec![Rgb8Pixel::default(); 360 * 420];
+                window.request_redraw();
+                window.draw_if_needed(|renderer| {
+                    renderer.render(&mut pixels, 360);
+                });
+                pixels
+            };
+            let pixels = draw();
+            let mut centers = Vec::new();
+            let mut band = Vec::new();
+            for y in 36..380 {
+                let count = (8..50)
+                    .filter(|x| matches(pixels[y * 360 + x], icon_color))
+                    .count();
+                if count > 10 {
+                    band.push(y);
+                } else if !band.is_empty() {
+                    centers.push(band.iter().sum::<usize>() as f32 / band.len() as f32);
+                    band.clear();
+                }
+            }
+            assert_eq!(
+                centers.len(),
+                3,
+                "Mini app list must expose three icon handles"
+            );
+            let mut expected = order();
+            expected.rotate_left(1);
+            window.dispatch_event(WindowEvent::PointerPressed {
+                position: LogicalPosition::new(30.0, centers[0]),
+                button: PointerEventButton::Left,
+            });
+            window.dispatch_event(WindowEvent::PointerMoved {
+                position: LogicalPosition::new(30.0, centers[2] + 25.0),
+            });
+            draw();
+            window.dispatch_event(WindowEvent::PointerReleased {
+                position: LogicalPosition::new(30.0, centers[2] + 25.0),
+                button: PointerEventButton::Left,
+            });
+            draw();
+            assert_eq!(
+                order(),
+                expected,
+                "Mini icon drag must persist and synchronize app order"
+            );
+        }
+    }
 
     #[test]
     fn remove_last_action_and_restore_defaults_without_duplicate_roles() {
