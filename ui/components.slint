@@ -4,6 +4,360 @@ import { Theme, Icons } from "theme.slint";
 import { ListView } from "std-widgets.slint";
 import { OutputRow, ActionButton } from "types.slint";
 
+// Shared keyboard focus indicator. List rows use an inward offset of -3px.
+export component FocusRing inherits Rectangle {
+    in property <bool> active;
+    in property <length> radius;
+    in property <length> offset: Theme.focus-offset;
+    x: -offset;
+    y: -offset;
+    border-radius: max(0px, radius + offset);
+    border-width: Theme.focus-thickness;
+    border-color: Theme.secondary;
+    background: transparent;
+    opacity: active ? 1 : 0;
+    animate opacity {
+        duration: Theme.motion-fast;
+        easing: ease-out;
+    }
+}
+export component FilterChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 32px;
+    width: content.preferred-width;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: Theme.corner-small;
+    border-width: selected ? 0px : 1px;
+    border-color: Theme.outline-variant;
+    background: selected ? Theme.secondary-container : transparent;
+    animate background {
+        duration: Theme.motion-fast;
+        easing: ease-out;
+    }
+    forward-focus: keys;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-checkable: true;
+    accessible-checked: selected;
+    accessible-action-default => {
+        root.clicked();
+    }
+    Rectangle {
+        border-radius: parent.border-radius;
+        background: Theme.on-surface.with-alpha(touch.pressed || keys.has-focus ? 0.12 : touch.has-hover ? 0.08 : 0);
+    }
+    content := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 4px;
+        if root.selected: Image {
+            source: Icons.check;
+            width: 18px;
+            height: 18px;
+            y: (parent.height - self.height) / 2;
+            colorize: Theme.on-secondary-container;
+        }
+        Text {
+            text: root.text;
+            font-size: Theme.label-large;
+            font-weight: 500;
+            color: root.selected ? Theme.on-secondary-container : Theme.on-surface-variant;
+            vertical-alignment: center;
+        }
+    }
+    FocusRing {
+        width: parent.width + 2 * self.offset;
+        height: parent.height + 2 * self.offset;
+        active: keys.has-focus;
+        radius: root.border-radius;
+    }
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == Key.Space {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+// Single selection with expressive inner corners; indices belong to the caller.
+export component ConnectedButtonGroup inherits HorizontalLayout {
+    in property <[string]> labels;
+    in-out property <int> selected-index;
+    callback selected();
+    spacing: 2px;
+    height: 40px;
+    vertical-stretch: 0;
+    for label[index] in labels: Rectangle {
+        height: 40px;
+        min-width: caption.preferred-width + 24px;
+        border-top-left-radius: index == 0 || index == root.selected-index ? 20px : Theme.corner-small;
+        border-bottom-left-radius: self.border-top-left-radius;
+        border-top-right-radius: index == root.labels.length - 1 || index == root.selected-index ? 20px : Theme.corner-small;
+        border-bottom-right-radius: self.border-top-right-radius;
+        background: index == root.selected-index ? Theme.secondary-container : Theme.surface-container-high;
+        animate border-top-left-radius, border-bottom-left-radius, border-top-right-radius, border-bottom-right-radius {
+            duration: Theme.motion-fast;
+            easing: ease-out-back;
+        }
+        animate background {
+            duration: Theme.motion-fast;
+            easing: ease-out;
+        }
+        forward-focus: keys;
+        accessible-role: button;
+        accessible-label: label;
+        accessible-checkable: true;
+        accessible-checked: index == root.selected-index;
+        accessible-action-default => {
+            root.selected-index = index;
+            root.selected();
+        }
+        Rectangle {
+            border-top-left-radius: parent.border-top-left-radius;
+            border-bottom-left-radius: parent.border-bottom-left-radius;
+            border-top-right-radius: parent.border-top-right-radius;
+            border-bottom-right-radius: parent.border-bottom-right-radius;
+            background: Theme.on-surface.with-alpha(touch.pressed || keys.has-focus ? 0.12 : touch.has-hover ? 0.08 : 0);
+        }
+        caption := Text {
+            text: label;
+            font-size: Theme.label-large;
+            font-weight: 500;
+            color: index == root.selected-index ? Theme.on-secondary-container : Theme.on-surface-variant;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        FocusRing {
+            width: parent.width + 2 * self.offset;
+            height: parent.height + 2 * self.offset;
+            active: keys.has-focus;
+            border-top-left-radius: parent.border-top-left-radius + self.offset;
+            border-bottom-left-radius: parent.border-bottom-left-radius + self.offset;
+            border-top-right-radius: parent.border-top-right-radius + self.offset;
+            border-bottom-right-radius: parent.border-bottom-right-radius + self.offset;
+        }
+        keys := FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.Return || event.text == Key.Space {
+                    root.selected-index = index;
+                    root.selected();
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                root.selected-index = index;
+                root.selected();
+            }
+        }
+    }
+}
+// Outer corners are provided by the first and last item, preserving their gaps.
+export component SegmentedList inherits VerticalLayout {
+    spacing: 2px;
+    alignment: start;
+    @children
+}
+export component ListItem inherits Rectangle {
+    in property <string> label;
+    in property <string> hint;
+    in property <bool> first;
+    in property <bool> last;
+    in property <bool> narrow: self.width < 480px;
+    min-height: max(hint == "" ? 48px : 64px, narrow ? labels.preferred-height + controls.preferred-height + 24px : max(labels.preferred-height, controls.preferred-height) + 16px);
+    vertical-stretch: 0;
+    background: Theme.surface;
+    border-top-left-radius: first ? Theme.corner-large : Theme.corner-extra-small;
+    border-top-right-radius: self.border-top-left-radius;
+    border-bottom-left-radius: last ? Theme.corner-large : Theme.corner-extra-small;
+    border-bottom-right-radius: self.border-bottom-left-radius;
+    labels := VerticalLayout {
+        x: 16px;
+        y: root.narrow ? 12px : (root.height - self.preferred-height) / 2;
+        width: root.narrow ? root.width - 32px : max(0px, controls.x - 32px);
+        height: self.preferred-height;
+        spacing: 4px;
+        Text {
+            text: root.label;
+            color: Theme.on-surface;
+            font-size: Theme.body-large;
+            wrap: word-wrap;
+        }
+        if root.hint != "": Text {
+            text: root.hint;
+            color: Theme.on-surface-variant;
+            font-size: Theme.body-small;
+            wrap: word-wrap;
+        }
+    }
+    controls := HorizontalLayout {
+        x: root.narrow ? 16px : root.width - self.width - 16px;
+        y: root.narrow ? labels.y + labels.height + 8px : (root.height - self.height) / 2;
+        width: min(self.preferred-width, root.width - 32px);
+        height: self.preferred-height;
+        spacing: 8px;
+        alignment: start;
+        @children
+    }
+}
+// Keyboard handling for navigation and list entries without mouse focus theft.
+export component KeyboardRow inherits Rectangle {
+    in property <bool> focus-request;
+    callback activated();
+    callback moved(int);
+    forward-focus: keys;
+    accessible-role: button;
+    accessible-action-default => {
+        root.activated();
+    }
+    changed focus-request => {
+        if focus-request {
+            keys.focus();
+        }
+    }
+    @children
+    FocusRing {
+        width: parent.width + 2 * self.offset;
+        height: parent.height + 2 * self.offset;
+        active: keys.has-focus;
+        radius: root.border-radius;
+        offset: -3px;
+    }
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == Key.Space {
+                root.activated();
+                return accept;
+            }
+            if event.text == Key.UpArrow {
+                root.moved(-1);
+                return accept;
+            }
+            if event.text == Key.DownArrow {
+                root.moved(1);
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
+// Density -2 outlined field. No clear affordance, including numeric retention.
+export component TextField inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder-text;
+    in property <InputType> input-type <=> input.input-type;
+    in property <bool> enabled: true;
+    callback edited(string);
+    height: 48px;
+    min-width: 64px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    border-radius: Theme.corner-extra-small;
+    border-width: input.has-focus ? 2px : 1px;
+    border-color: input.has-focus ? Theme.primary : Theme.outline;
+    opacity: enabled ? 1 : 0.38;
+    background: transparent;
+    forward-focus: input;
+    Text {
+        x: 16px;
+        width: parent.width - 32px;
+        height: parent.height;
+        text: input.text == "" ? root.placeholder-text : "";
+        font-size: Theme.body-large;
+        color: Theme.on-surface-variant;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    ContextMenuArea {
+        x: 16px;
+        width: parent.width - 32px;
+        height: parent.height;
+        enabled: root.enabled;
+        Menu {
+            MenuItem {
+                title: "Undo";
+                activated => {
+                    input.undo();
+                }
+            }
+            MenuItem {
+                title: "Redo";
+                activated => {
+                    input.redo();
+                }
+            }
+            MenuSeparator {
+            }
+            MenuItem {
+                title: "Cut";
+                activated => {
+                    input.cut();
+                }
+            }
+            MenuItem {
+                title: "Copy";
+                activated => {
+                    input.copy();
+                }
+            }
+            MenuItem {
+                title: "Paste";
+                activated => {
+                    input.paste();
+                }
+            }
+            MenuItem {
+                title: "Select all";
+                activated => {
+                    input.select-all();
+                }
+            }
+        }
+        field-viewport := Rectangle {
+            clip: true;
+            input := TextInput {
+                property <length> scroll-x;
+                x: clamp(scroll-x, min(0px, field-viewport.width - self.width), 0px);
+                width: max(field-viewport.width, self.preferred-width + self.text-cursor-width);
+                height: parent.height;
+                cursor-position-changed(position) => {
+                    if position.x + self.x < 0px {
+                        scroll-x = -position.x;
+                    }
+                    if position.x + self.x > field-viewport.width - self.text-cursor-width {
+                        scroll-x = field-viewport.width - self.text-cursor-width - position.x;
+                    }
+                }
+                enabled: root.enabled;
+                single-line: true;
+                font-size: Theme.body-large;
+                color: Theme.on-surface;
+                selection-background-color: Theme.secondary-container;
+                selection-foreground-color: Theme.on-secondary-container;
+                vertical-alignment: center;
+                accessible-placeholder-text: root.placeholder-text;
+                edited => {
+                    root.edited(self.text);
+                }
+            }
+        }
+    }
+}
+
 // M3 switch colors use the same roles as the rest of RunBay, independent of
 // the operating system accent. The selected thumb contrasts with its track.
 export component ToggleSwitch inherits Rectangle {
@@ -51,10 +405,16 @@ export component ToggleSwitch inherits Rectangle {
         }
         animate x, width, background { duration: Theme.motion-fast; }
     }
+    FocusRing {
+        width: parent.width + 2 * self.offset;
+        height: parent.height + 2 * self.offset;
+        active: keys.has-focus;
+        radius: root.border-radius;
+    }
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { keys.focus(); root.toggle(); }
+        clicked => { root.toggle(); }
     }
     keys := FocusScope {
         width: 0px;
@@ -452,6 +812,7 @@ export component SymbolButton inherits Rectangle {
     in property <bool> pulse;
     callback clicked();
 
+    forward-focus: keys;
     property <bool> pressed: touch.pressed || pulse;
     width: label == "" ? size : size + label-text.preferred-width + 20px;
     horizontal-stretch: 0;
@@ -474,7 +835,7 @@ export component SymbolButton inherits Rectangle {
     state-layer := Rectangle {
         border-radius: parent.border-radius;
         background: Theme.on-surface;
-        opacity: !enabled ? 0 : touch.pressed ? 0.12 : touch.has-hover ? 0.08 : 0;
+        opacity: !enabled ? 0 : touch.pressed || keys.has-focus ? 0.12 : touch.has-hover ? 0.08 : 0;
         animate opacity { duration: Theme.motion-fast; }
     }
 
@@ -536,6 +897,21 @@ export component SymbolButton inherits Rectangle {
         }
     }
 
+    FocusRing {
+        width: parent.width + 2 * self.offset;
+        height: parent.height + 2 * self.offset;
+        active: keys.has-focus;
+        radius: root.border-radius;
+    }
+    keys := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == Key.Space {
+                root.clicked(); return accept;
+            }
+            return reject;
+        }
+    }
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
@@ -652,7 +1028,9 @@ export component PillButton inherits Rectangle {
     in property <string> style: "text";
     in property <bool> enabled: true;
     callback clicked();
+    forward-focus: keys;
     height: 40px;
+    vertical-stretch: 0;
     min-width: label.preferred-width + 24px;
     border-radius: touch.pressed ? Theme.corner-small : 20px;
     animate border-radius { duration: Theme.motion-fast; easing: ease-out; }
@@ -668,7 +1046,7 @@ export component PillButton inherits Rectangle {
     Rectangle {
         border-radius: parent.border-radius;
         background: Theme.on-surface;
-        opacity: !enabled ? 0 : touch.pressed ? 0.12 : touch.has-hover ? 0.08 : 0;
+        opacity: !enabled ? 0 : touch.pressed || keys.has-focus ? 0.12 : touch.has-hover ? 0.08 : 0;
     }
     label := Text {
         text: root.text;
@@ -678,6 +1056,21 @@ export component PillButton inherits Rectangle {
             : style == "tonal" ? Theme.on-secondary-container
             : style == "danger" ? Theme.on-error
             : Theme.primary;
+    }
+    FocusRing {
+        width: parent.width + 2 * self.offset;
+        height: parent.height + 2 * self.offset;
+        active: keys.has-focus;
+        radius: root.border-radius;
+    }
+    keys := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == Key.Space {
+                root.clicked(); return accept;
+            }
+            return reject;
+        }
     }
     touch := TouchArea {
         enabled: root.enabled;

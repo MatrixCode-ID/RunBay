@@ -1,8 +1,8 @@
 # Settings: Material 3 Expressive composition
 
 - Date: 2026-10-25
-- Status: planned
-- Resulting plan: [plan/unexecuted/settings-material-expressive.md](../../plan/unexecuted/settings-material-expressive.md)
+- Status: executed (2026-10-25)
+- Resulting plan: [plan/executed/settings-material-expressive.md](../../plan/executed/settings-material-expressive.md)
 
 ## Context
 
@@ -395,6 +395,11 @@ For discussion, prioritize composition before decorative shape changes:
   History; motion only on interaction; Compact action targets 32px; console
   toolbar at least 8px below the caption; user does the visual check; one
   commit on `work-bench`. Details are final in the plan.
+
+- 2026-10-25: **Execution completed.** Applied the final plan with no dependency
+  or setting/filter behavior changes. Input source measurements selected the
+  48px TextField fallback; native dropdowns remain unchanged. The executed plan
+  records measurements, RunBay validation runs, and the user visual checklist.
 
 ## Open questions
 

@@ -150,14 +150,14 @@ component MiniAppRow inherits Rectangle {
                 alignment: stretch;
                 ActionBar {
                     actions: app.actions;
-                    size: 30px;
+                    size: 32px;
                     style: "standard";
                     triggered(id) => { MiniBridge.run-action(app.id, id); }
                 }
                 if app.status == "running": SymbolButton {
                     icon: Icons.stop;
                     tooltip: "Stop all active actions for " + app.name;
-                    size: 30px;
+                    size: 32px;
                     icon-size: 18px;
                     icon-color: Theme.error;
                     clicked => { MiniBridge.stop-app(app.id); }

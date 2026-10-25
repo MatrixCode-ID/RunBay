@@ -194,11 +194,35 @@ fn captions_render_in_both_themes_and_follow_layout_and_dpi() {
     let changes = Rc::new(Cell::new(0));
     let count = changes.clone();
     settings.on_changed(move || count.set(count.get() + 1));
-    click(&full_window, 238.0, 501.0);
+    click(&full_window, 890.0, 462.0);
     assert!(
         !settings.get_top_compact(),
         "pointer toggles the saved binding"
     );
+    // Mouse activation does not acquire focus. Tab must reach the switch and
+    // draw its secondary ring, regardless of the previously focused caption.
+    let secondary = full.global::<runbay::Theme>().get_secondary();
+    let mut reached_switch = false;
+    for _ in 0..40 {
+        let text: slint::SharedString = slint::platform::Key::Tab.into();
+        full_window.dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+        full_window.dispatch_event(WindowEvent::KeyReleased { text });
+        std::thread::sleep(std::time::Duration::from_millis(130));
+        slint::platform::update_timers_and_animations();
+        let pixels = render(&full_window, "settings-keyboard-focus");
+        let count = (435..489)
+            .flat_map(|y| (860..920).map(move |x| y * 1100 + x))
+            .filter(|&i| {
+                let p = pixels[i];
+                (p.r, p.g, p.b) == (secondary.red(), secondary.green(), secondary.blue())
+            })
+            .count();
+        if count > 100 {
+            reached_switch = true;
+            break;
+        }
+    }
+    assert!(reached_switch, "Tab reaches the visibly focused switch");
     full_window.dispatch_event(WindowEvent::KeyPressed { text: " ".into() });
     full_window.dispatch_event(WindowEvent::KeyReleased { text: " ".into() });
     assert!(

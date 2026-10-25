@@ -1,8 +1,8 @@
 // Full-mode pages: the app editor, settings, the Action History flyout, and dialogs.
 
-import { LineEdit, TextEdit, ComboBox, CheckBox, ScrollView, ListView, AboutSlint } from "std-widgets.slint";
+import { TextEdit, ComboBox, CheckBox, ScrollView, ListView, AboutSlint } from "std-widgets.slint";
 import { Theme, Icons } from "theme.slint";
-import { SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, ToggleSwitch } from "components.slint";
+import { FilterChip, ConnectedButtonGroup, SegmentedList, ListItem, KeyboardRow, TextField, SymbolButton, StatusBadge, AgentChip, Avatar, DialogFrame, PillButton, ToggleSwitch } from "components.slint";
 
 export struct EnvRow {
     key: string,
@@ -149,31 +149,27 @@ export component EnvTable inherits VerticalLayout {
     spacing: 6px;
     for row[index] in rows: HorizontalLayout {
         spacing: 6px;
-        LineEdit {
+        TextField {
             text: row.key;
             placeholder-text: "NAME";
             horizontal-stretch: 1;
             edited(text) => { root.edited(index, text, row.value); }
         }
-        LineEdit {
+        TextField {
             text: row.value;
             placeholder-text: "value";
             horizontal-stretch: 2;
             edited(text) => { root.edited(index, row.key, text); }
         }
-        SymbolButton {
-            icon: Icons.delete;
-            tooltip: "Remove variable";
-            size: 32px;
+        PillButton {
+            text: "Remove";
             clicked => { root.removed(index); }
         }
     }
     HorizontalLayout {
         alignment: start;
-        SymbolButton {
-            icon: Icons.add;
-            label: "Add variable";
-            size: 32px;
+        PillButton {
+            text: "+ Add variable";
             clicked => { root.added(); }
         }
     }
@@ -240,6 +236,7 @@ export component EditorPage inherits Rectangle {
     callback reload-script();
     reload-script() => { EditorBridge.reload-script(); }
 
+    property <int> action-focus: -1;
     background: Theme.surface;
     // Swallow clicks so they do not reach the page below.
     TouchArea { }
@@ -297,12 +294,12 @@ export component EditorPage inherits Rectangle {
                         alignment: start;
                         SectionTitle { text: "App"; }
                         FieldLabel { text: "Name"; }
-                        LineEdit {
+                        TextField {
                             text <=> name;
                             placeholder-text: "My App";
                         }
                         FieldLabel { text: "Group"; }
-                        LineEdit {
+                        TextField {
                             text <=> group;
                             placeholder-text: groups.length > 0 ? "e.g. " + groups[0] : "Default";
                         }
@@ -329,13 +326,13 @@ export component EditorPage inherits Rectangle {
                         FieldLabel { text: "Working directory"; }
                         HorizontalLayout {
                             spacing: 6px;
-                            LineEdit {
+                            TextField {
                                 text <=> working-directory;
                                 placeholder-text: "C:\\src\\my-app";
                             }
-                            SymbolButton {
-                                icon: Icons.folder-open;
-                                tooltip: "Choose folder";
+                            PillButton {
+                                text: "Choose folder";
+                                style: "tonal";
                                 clicked => { root.choose-folder(); }
                             }
                         }
@@ -370,7 +367,14 @@ export component EditorPage inherits Rectangle {
                     }
                     ListView {
                         vertical-stretch: 1;
-                        for action[index] in actions: Rectangle {
+                        for action[index] in actions: KeyboardRow {
+                            accessible-label: action.name;
+                            focus-request: root.action-focus == index;
+                            activated => { root.select-action(index); }
+                            moved(delta) => {
+                                root.action-focus = clamp(index + delta, 0, root.actions.length - 1);
+                                root.select-action(root.action-focus);
+                            }
                             height: 40px;
                             border-radius: 20px;
                             background: index == selected-action ? Theme.secondary-container
@@ -449,8 +453,9 @@ export component EditorPage inherits Rectangle {
                         padding: 16px;
                         spacing: 8px;
                         alignment: start;
+                        SectionTitle { text: "Action"; }
                         FieldLabel { text: "Action name"; }
-                        LineEdit { text <=> action-name; }
+                        TextField { text <=> action-name; }
                         FieldLabel { text: "Action icon"; }
                         HorizontalLayout {
                             spacing: 8px;
@@ -488,6 +493,7 @@ export component EditorPage inherits Rectangle {
                             font-size: Theme.body-small;
                             wrap: word-wrap;
                         }
+                        SectionTitle { text: "Script"; }
                         if !action-is-build-run: HorizontalLayout {
                             spacing: 8px;
                             FieldLabel {
@@ -517,11 +523,7 @@ export component EditorPage inherits Rectangle {
                             color: Theme.on-surface-variant;
                             wrap: word-wrap;
                         }
-                        FieldLabel { text: "Working directory (empty: the app's)"; }
-                        LineEdit {
-                            text <=> action-working-directory;
-                            placeholder-text: working-directory;
-                        }
+                        SectionTitle { text: "Environment"; }
                         FieldLabel { text: "Environment overrides"; }
                         EnvTable {
                             rows: action-env;
@@ -529,24 +531,27 @@ export component EditorPage inherits Rectangle {
                             removed(i) => { root.action-env-removed(i); }
                             added => { root.action-env-added(); }
                         }
+                        SectionTitle { text: "Behavior"; }
+                        FieldLabel { text: "Working directory (empty: the app's)"; }
+                        TextField {
+                            text <=> action-working-directory;
+                            placeholder-text: working-directory;
+                        }
                         FieldLabel { text: "When the app is still running"; }
                         ComboBox {
                             model: ["Ask", "Reject", "Stop and restart", "Run in parallel"];
                             current-index <=> when-running-index;
                         }
                         FieldLabel { text: "History retention"; }
-                        HorizontalLayout {
+                        ConnectedButtonGroup {
+                            labels: ["Off", "Last N", "Forever"];
+                            selected-index <=> retention-index;
+                        }
+                        if retention-index == 1: HorizontalLayout {
                             spacing: 8px;
-                            ComboBox {
-                                model: ["Off (memory only)", "Keep the last runs", "Forever"];
-                                current-index <=> retention-index;
-                                horizontal-stretch: 2;
-                            }
-                            if retention-index == 1: LineEdit {
-                                text <=> retention-count;
-                                input-type: number;
-                                horizontal-stretch: 1;
-                            }
+                            alignment: start;
+                            TextField { width: 80px; text <=> retention-count; input-type: number; }
+                            Text { text: "runs"; color: Theme.on-surface-variant; font-size: Theme.body-small; vertical-alignment: center; }
                         }
                     }
                 }
@@ -585,32 +590,6 @@ export component EditorPage inherits Rectangle {
 
 }
 
-// A setting keeps its label, explanation, and controls together, even at narrow widths.
-component SettingRow inherits VerticalLayout {
-    in property <string> label;
-    in property <string> hint;
-    spacing: 6px;
-    padding-top: 12px;
-    padding-bottom: 12px;
-    Text {
-        text: label;
-        color: Theme.on-surface;
-        font-size: Theme.body-large;
-        wrap: word-wrap;
-    }
-    if hint != "": Text {
-        text: hint;
-        color: Theme.on-surface-variant;
-        font-size: Theme.body-small;
-        wrap: word-wrap;
-    }
-    HorizontalLayout {
-        spacing: 12px;
-        alignment: start;
-        @children
-    }
-}
-
 export component SettingsPage inherits Rectangle {
     in-out property <int> theme-index <=> SettingsBridge.theme-index;
     in-out property <int> console-theme-index <=> SettingsBridge.console-theme-index;
@@ -637,29 +616,39 @@ export component SettingsPage inherits Rectangle {
     in-out property <string> data-hint <=> SettingsBridge.data-hint;
     in-out property <bool> data-locked <=> SettingsBridge.data-locked;
     callback changed();
-    changed() => { SettingsBridge.changed(); }
+    changed() => {
+        SettingsBridge.changed();
+    }
     callback close();
-    close() => { SettingsBridge.close(); }
+    close() => {
+        SettingsBridge.close();
+    }
     callback check-updates();
-    check-updates() => { SettingsBridge.check-updates(); }
+    check-updates() => {
+        SettingsBridge.check-updates();
+    }
     callback data-custom-toggled();
-    data-custom-toggled() => { SettingsBridge.data-custom-toggled(); }
+    data-custom-toggled() => {
+        SettingsBridge.data-custom-toggled();
+    }
     callback choose-data-folder();
-    choose-data-folder() => { SettingsBridge.choose-data-folder(); }
-
+    choose-data-folder() => {
+        SettingsBridge.choose-data-folder();
+    }
     property <int> category: 0;
+    property <int> nav-focus: -1;
     property <[string]> categories: ["Appearance", "Startup & data", "Action defaults", "Updates", "Agents"];
     property <[image]> category-icons: [Icons.compact, Icons.folder, Icons.terminal, Icons.download, Icons.agent];
     property <[string]> descriptions: [
-        "Choose how RunBay looks and behaves on your desktop.",
-        "Choose when RunBay starts and where it keeps your apps and history.",
-        "Defaults for newly created actions. Edit existing actions in the app editor.",
-        "Manage automatic updates and check for a new version.",
-        "Choose what connected coding agents may do in RunBay."
+    "Choose how RunBay looks and behaves on your desktop.",
+    "Choose when RunBay starts and where it keeps your apps and history.",
+    "Defaults for newly created actions. Edit existing actions in the app editor.",
+    "Manage automatic updates and check for a new version.",
+    "Choose what connected coding agents may do in RunBay."
     ];
-
     background: Theme.surface;
-    TouchArea { }
+    TouchArea {
+    }
     VerticalLayout {
         padding: 20px;
         spacing: 20px;
@@ -668,7 +657,9 @@ export component SettingsPage inherits Rectangle {
             PillButton {
                 text: "Back";
                 style: "tonal";
-                clicked => { root.close(); }
+                clicked => {
+                    root.close();
+                }
             }
             VerticalLayout {
                 horizontal-stretch: 1;
@@ -689,41 +680,69 @@ export component SettingsPage inherits Rectangle {
         HorizontalLayout {
             spacing: 16px;
             vertical-stretch: 1;
-            VerticalLayout {
+            Rectangle {
                 width: 156px;
-                spacing: 4px;
-                alignment: start;
-                for title[index] in root.categories: Rectangle {
-                    height: 44px;
-                    border-radius: Theme.corner-medium;
-                    background: root.category == index ? Theme.secondary-container
-                        : nav-touch.has-hover ? Theme.surface-container-high : transparent;
-                    accessible-role: button;
-                    accessible-label: title;
-                    accessible-action-default => { root.category = index; }
-                    HorizontalLayout {
-                        padding-left: 12px;
-                        padding-right: 8px;
-                        spacing: 10px;
-                        Image {
-                            source: root.category-icons[index];
-                            width: 20px;
-                            height: 20px;
-                            y: (parent.height - self.height) / 2;
-                            colorize: root.category == index ? Theme.on-secondary-container : Theme.on-surface-variant;
-                        }
-                        Text {
-                            text: title;
-                            font-size: Theme.label-medium;
-                            font-weight: root.category == index ? 600 : 400;
-                            color: root.category == index ? Theme.on-secondary-container : Theme.on-surface-variant;
-                            horizontal-stretch: 1;
-                            vertical-alignment: center;
-                        }
+                Rectangle {
+                    y: root.category * 52px;
+                    height: 48px;
+                    width: parent.width;
+                    border-radius: Theme.corner-full;
+                    background: Theme.secondary-container;
+                    animate y {
+                        duration: Theme.motion-fast;
+                        easing: ease-out;
                     }
-                    nav-touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.category = index; }
+                }
+                VerticalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    for title[index] in root.categories: KeyboardRow {
+                        height: 48px;
+                        border-radius: Theme.corner-full;
+                        focus-request: root.nav-focus == index;
+                        activated => {
+                            root.category = index;
+                        }
+                        moved(delta) => {
+                            root.nav-focus = clamp(index + delta, 0, root.categories.length - 1);
+                            root.category = root.nav-focus;
+                        }
+                        animate background {
+                            duration: Theme.motion-fast;
+                            easing: ease-out;
+                        }
+                        background: nav-touch.has-hover ? Theme.surface-container-high : transparent;
+                        accessible-role: button;
+                        accessible-label: title;
+                        accessible-action-default => {
+                            root.category = index;
+                        }
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 8px;
+                            spacing: 10px;
+                            Image {
+                                source: root.category-icons[index];
+                                width: 20px;
+                                height: 20px;
+                                y: (parent.height - self.height) / 2;
+                                colorize: root.category == index ? Theme.on-secondary-container : Theme.on-surface-variant;
+                            }
+                            Text {
+                                text: title;
+                                font-size: Theme.label-medium;
+                                font-weight: root.category == index ? 600 : 400;
+                                color: root.category == index ? Theme.on-secondary-container : Theme.on-surface-variant;
+                                horizontal-stretch: 1;
+                                vertical-alignment: center;
+                            }
+                        }
+                        nav-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.category = index;
+                            }
+                        }
                     }
                 }
             }
@@ -731,218 +750,449 @@ export component SettingsPage inherits Rectangle {
                 horizontal-stretch: 1;
                 background: Theme.surface-container-low;
                 border-radius: Theme.corner-large;
-                ScrollView {
+                settings-scroll := ScrollView {
+                    content-width: self.visible-width;
                     VerticalLayout {
                         padding: 20px;
-                        spacing: 8px;
                         alignment: start;
-                        Text {
-                            text: root.categories[root.category];
-                            font-size: Theme.title-large;
-                            font-weight: 600;
-                            color: Theme.on-surface;
-                        }
-                        Text {
-                            text: root.descriptions[root.category];
-                            color: Theme.on-surface-variant;
-                            font-size: Theme.body-medium;
-                            wrap: word-wrap;
-                        }
-                        if root.category == 0: VerticalLayout {
-                            spacing: 4px;
+                        HorizontalLayout {
                             alignment: start;
-                            SettingRow {
-                                label: "Theme";
-                                ComboBox {
-                                    width: 200px;
-                                    model: ["Follow Windows", "Light", "Dark"];
-                                    current-index <=> theme-index;
-                                    selected => { root.changed(); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Console theme";
-                                hint: "Only output views; Follow uses the theme selected for the UI.";
-                                ComboBox {
-                                    width: 200px;
-                                    model: ["Follow UI", "Light", "Dark"];
-                                    current-index <=> console-theme-index;
-                                    selected => { root.changed(); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Floating icon size";
-                                ComboBox {
-                                    width: 200px;
-                                    model: ["Small (40 px)", "Medium (56 px)", "Large (72 px)"];
-                                    current-index <=> icon-size-index;
-                                    selected => { root.changed(); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Always on top in Compact mode";
-                                ToggleSwitch {
-                                    accessible-label: "Always on top in Compact mode";
-                                    checked <=> top-compact;
-                                    toggled => { root.changed(); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Always on top in Icon mode";
-                                ToggleSwitch {
-                                    accessible-label: "Always on top in Icon mode";
-                                    checked <=> top-icon;
-                                    toggled => { root.changed(); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Taskbar icon in Full mode";
-                                hint: "When off, use the tray icon to open RunBay.";
-                                ToggleSwitch {
-                                    accessible-label: "Taskbar icon in Full mode";
-                                    checked <=> taskbar-full;
-                                    toggled => { root.changed(); }
-                                }
-                            }
-                            SettingRow {
-                                label: "Taskbar icon in Compact mode";
-                                hint: "When off, use the tray icon to open RunBay.";
-                                ToggleSwitch {
-                                    accessible-label: "Taskbar icon in Compact mode";
-                                    checked <=> taskbar-compact;
-                                    toggled => { root.changed(); }
-                                }
-                            }
-                            SettingRow {
-                                label: "On-screen output line limit";
-                                hint: "Lines kept on screen per run; the log file stays complete.";
-                                LineEdit {
-                                    width: 200px;
-                                    text <=> line-limit;
-                                    input-type: number;
-                                    edited => { root.changed(); }
-                                }
-                            }
-                        }
-                        if root.category == 1: VerticalLayout {
-                            spacing: 4px;
-                            alignment: start;
-                            SettingRow {
-                                label: "Load with Windows";
-                                hint: "Starts RunBay at sign-in in the last mode and position.";
-                                ToggleSwitch {
-                                    accessible-label: "Load with Windows";
-                                    checked <=> autostart;
-                                    toggled => { root.changed(); }
-                                }
-                            }
-                            SectionTitle { text: "Data"; }
-                            SettingRow {
-                                label: "Use another data folder";
-                                hint: data-hint;
-                                CheckBox {
-                                    checked <=> data-custom;
-                                    enabled: !data-locked;
-                                    toggled => { root.data-custom-toggled(); }
-                                }
-                                PillButton {
-                                    text: "Choose folder";
-                                    style: "tonal";
-                                    enabled: data-custom && !data-locked;
-                                    clicked => { root.choose-data-folder(); }
-                                }
-                            }
-                        }
-                        if root.category == 2: VerticalLayout {
-                            spacing: 4px;
-                            alignment: start;
-                            SettingRow {
-                                label: "When the app is still running";
-                                ComboBox {
-                                    width: 200px;
-                                    model: ["Ask", "Reject", "Stop and restart", "Run in parallel"];
-                                    current-index <=> when-running-index;
-                                    selected => { root.changed(); }
-                                }
-                            }
-                            for item in [
-                                { label: "Build history", kind: 0 },
-                                { label: "Run history", kind: 1 },
-                                { label: "Build + Run history", kind: 2 },
-                                { label: "Custom action history", kind: 3 },
-                            ]: SettingRow {
-                                label: item.label;
-                                ComboBox {
-                                    width: 200px;
-                                    model: ["Off", "Keep the last runs", "Forever"];
-                                    current-index: item.kind == 0 ? retention-build : item.kind == 1 ? retention-run : item.kind == 2 ? retention-build-run : retention-custom;
-                                    selected => {
-                                        if (item.kind == 0) { retention-build = self.current-index; }
-                                        if (item.kind == 1) { retention-run = self.current-index; }
-                                        if (item.kind == 2) { retention-build-run = self.current-index; }
-                                        if (item.kind == 3) { retention-custom = self.current-index; }
-                                        root.changed();
-                                    }
-                                }
-                                LineEdit {
-                                    width: 80px;
-                                    input-type: number;
-                                    enabled: (item.kind == 0 ? retention-build : item.kind == 1 ? retention-run : item.kind == 2 ? retention-build-run : retention-custom) == 1;
-                                    text: item.kind == 0 ? count-build : item.kind == 1 ? count-run : item.kind == 2 ? count-build-run : count-custom;
-                                    edited(text) => {
-                                        if (item.kind == 0) { count-build = text; }
-                                        if (item.kind == 1) { count-run = text; }
-                                        if (item.kind == 2) { count-build-run = text; }
-                                        if (item.kind == 3) { count-custom = text; }
-                                        root.changed();
-                                    }
-                                }
-                            }
-                        }
-                        if root.category == 3: VerticalLayout {
-                            spacing: 4px;
-                            alignment: start;
-                            SettingRow {
-                                label: "Update automatically";
-                                hint: update-status;
-                                ToggleSwitch {
-                                    accessible-label: "Update automatically";
-                                    checked <=> auto-update;
-                                    toggled => { root.changed(); }
-                                }
-                                PillButton {
-                                    text: "Check now";
-                                    style: "tonal";
-                                    clicked => { root.check-updates(); }
-                                }
-                            }
-                        }
-                        if root.category == 4: VerticalLayout {
-                            spacing: 4px;
-                            alignment: start;
-                            SettingRow {
-                                label: "MCP access";
-                                hint: "What coding agents may do through RunBay.exe --mcp.";
-                                ComboBox {
-                                    width: 200px;
-                                    model: ["Off", "Ask first", "Unrestricted"];
-                                    current-index <=> mcp-index;
-                                    selected => { root.changed(); }
-                                }
-                            }
-                            Text {
-                                text: "Copy setup instructions to paste into Claude Desktop or Codex.";
-                                color: Theme.on-surface-variant;
-                                font-size: Theme.body-small;
-                                wrap: word-wrap;
-                            }
-                            HorizontalLayout {
+                            content := VerticalLayout {
+                                width: min(720px, settings-scroll.visible-width - 40px);
+                                horizontal-stretch: 1;
+                                spacing: 16px;
                                 alignment: start;
-                                PillButton {
-                                    text: "Copy MCP setup instructions";
-                                    style: "tonal";
-                                    clicked => { SettingsBridge.copy-mcp-setup(); }
+                                Text {
+                                    text: root.categories[root.category];
+                                    font-size: Theme.title-medium;
+                                    font-weight: 600;
+                                    color: Theme.on-surface;
                                 }
+                                Text {
+                                    text: root.descriptions[root.category];
+                                    color: Theme.on-surface-variant;
+                                    font-size: Theme.body-medium;
+                                    wrap: word-wrap;
+                                }
+                                if root.category == 0: VerticalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+                                    SectionTitle {
+                                        text: "Theme";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: false;
+                                            label: "Theme";
+                                            ComboBox {
+                                                width: 200px;
+                                                model: ["Follow Windows", "Light", "Dark"];
+                                                current-index <=> theme-index;
+                                                selected => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                        ListItem {
+                                            first: false;
+                                            last: true;
+                                            label: "Console theme";
+                                            hint: "Only output views; Follow uses the theme selected for the UI.";
+                                            ComboBox {
+                                                width: 200px;
+                                                model: ["Follow UI", "Light", "Dark"];
+                                                current-index <=> console-theme-index;
+                                                selected => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    SectionTitle {
+                                        text: "Floating window";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: false;
+                                            label: "Floating icon size";
+                                            ComboBox {
+                                                width: 200px;
+                                                model: ["Small (40 px)", "Medium (56 px)", "Large (72 px)"];
+                                                current-index <=> icon-size-index;
+                                                selected => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                        ListItem {
+                                            first: false;
+                                            last: false;
+                                            label: "Always on top in Compact mode";
+                                            ToggleSwitch {
+                                                accessible-label: "Always on top in Compact mode";
+                                                checked <=> top-compact;
+                                                toggled => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                        ListItem {
+                                            first: false;
+                                            last: true;
+                                            label: "Always on top in Icon mode";
+                                            ToggleSwitch {
+                                                accessible-label: "Always on top in Icon mode";
+                                                checked <=> top-icon;
+                                                toggled => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    SectionTitle {
+                                        text: "Taskbar";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: false;
+                                            label: "Taskbar icon in Full mode";
+                                            hint: "When off, use the tray icon to open RunBay.";
+                                            ToggleSwitch {
+                                                accessible-label: "Taskbar icon in Full mode";
+                                                checked <=> taskbar-full;
+                                                toggled => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                        ListItem {
+                                            first: false;
+                                            last: true;
+                                            label: "Taskbar icon in Compact mode";
+                                            hint: "When off, use the tray icon to open RunBay.";
+                                            ToggleSwitch {
+                                                accessible-label: "Taskbar icon in Compact mode";
+                                                checked <=> taskbar-compact;
+                                                toggled => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    SectionTitle {
+                                        text: "Output";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: true;
+                                            label: "On-screen output line limit";
+                                            hint: "Lines kept on screen per run; the log file stays complete.";
+                                            TextField {
+                                                width: 200px;
+                                                text <=> line-limit;
+                                                input-type: number;
+                                                edited => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if root.category == 1: VerticalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+                                    SectionTitle {
+                                        text: "Startup";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: true;
+                                            label: "Load with Windows";
+                                            hint: "Starts RunBay at sign-in in the last mode and position.";
+                                            ToggleSwitch {
+                                                accessible-label: "Load with Windows";
+                                                checked <=> autostart;
+                                                toggled => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    SectionTitle {
+                                        text: "Data";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: true;
+                                            label: "Use another data folder";
+                                            hint: data-hint;
+                                            CheckBox {
+                                                accessible-label: "Use another data folder";
+                                                checked <=> data-custom;
+                                                enabled: !data-locked;
+                                                toggled => {
+                                                    root.data-custom-toggled();
+                                                }
+                                            }
+                                            PillButton {
+                                                text: "Choose folder";
+                                                style: "tonal";
+                                                enabled: data-custom && !data-locked;
+                                                clicked => {
+                                                    root.choose-data-folder();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if root.category == 2: VerticalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+                                    SectionTitle {
+                                        text: "Running";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: true;
+                                            label: "When the app is still running";
+                                            ComboBox {
+                                                width: 200px;
+                                                model: ["Ask", "Reject", "Stop and restart", "Run in parallel"];
+                                                current-index <=> when-running-index;
+                                                selected => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    SectionTitle {
+                                        text: "History retention";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: false;
+                                            label: "Build";
+                                            VerticalLayout {
+                                                spacing: 8px;
+                                                ConnectedButtonGroup {
+                                                    labels: ["Off", "Last N", "Forever"];
+                                                    selected-index <=> retention-build;
+                                                    selected => {
+                                                        root.changed();
+                                                    }
+                                                }
+                                                if retention-build == 1: HorizontalLayout {
+                                                    alignment: start;
+                                                    spacing: 8px;
+                                                    TextField {
+                                                        width: 80px;
+                                                        text <=> count-build;
+                                                        input-type: number;
+                                                        edited => {
+                                                            root.changed();
+                                                        }
+                                                    }
+                                                    Text {
+                                                        text: "runs";
+                                                        color: Theme.on-surface-variant;
+                                                        font-size: Theme.body-small;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        ListItem {
+                                            first: false;
+                                            last: false;
+                                            label: "Run";
+                                            VerticalLayout {
+                                                spacing: 8px;
+                                                ConnectedButtonGroup {
+                                                    labels: ["Off", "Last N", "Forever"];
+                                                    selected-index <=> retention-run;
+                                                    selected => {
+                                                        root.changed();
+                                                    }
+                                                }
+                                                if retention-run == 1: HorizontalLayout {
+                                                    alignment: start;
+                                                    spacing: 8px;
+                                                    TextField {
+                                                        width: 80px;
+                                                        text <=> count-run;
+                                                        input-type: number;
+                                                        edited => {
+                                                            root.changed();
+                                                        }
+                                                    }
+                                                    Text {
+                                                        text: "runs";
+                                                        color: Theme.on-surface-variant;
+                                                        font-size: Theme.body-small;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        ListItem {
+                                            first: false;
+                                            last: false;
+                                            label: "Build + Run";
+                                            VerticalLayout {
+                                                spacing: 8px;
+                                                ConnectedButtonGroup {
+                                                    labels: ["Off", "Last N", "Forever"];
+                                                    selected-index <=> retention-build-run;
+                                                    selected => {
+                                                        root.changed();
+                                                    }
+                                                }
+                                                if retention-build-run == 1: HorizontalLayout {
+                                                    alignment: start;
+                                                    spacing: 8px;
+                                                    TextField {
+                                                        width: 80px;
+                                                        text <=> count-build-run;
+                                                        input-type: number;
+                                                        edited => {
+                                                            root.changed();
+                                                        }
+                                                    }
+                                                    Text {
+                                                        text: "runs";
+                                                        color: Theme.on-surface-variant;
+                                                        font-size: Theme.body-small;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        ListItem {
+                                            first: false;
+                                            last: true;
+                                            label: "Custom";
+                                            VerticalLayout {
+                                                spacing: 8px;
+                                                ConnectedButtonGroup {
+                                                    labels: ["Off", "Last N", "Forever"];
+                                                    selected-index <=> retention-custom;
+                                                    selected => {
+                                                        root.changed();
+                                                    }
+                                                }
+                                                if retention-custom == 1: HorizontalLayout {
+                                                    alignment: start;
+                                                    spacing: 8px;
+                                                    TextField {
+                                                        width: 80px;
+                                                        text <=> count-custom;
+                                                        input-type: number;
+                                                        edited => {
+                                                            root.changed();
+                                                        }
+                                                    }
+                                                    Text {
+                                                        text: "runs";
+                                                        color: Theme.on-surface-variant;
+                                                        font-size: Theme.body-small;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if root.category == 3: VerticalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+                                    SectionTitle {
+                                        text: "Automatic updates";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: true;
+                                            label: "Update automatically";
+                                            hint: update-status;
+                                            ToggleSwitch {
+                                                accessible-label: "Update automatically";
+                                                checked <=> auto-update;
+                                                toggled => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    SectionTitle {
+                                        text: "Manual check";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: true;
+                                            label: "Check for updates";
+                                            PillButton {
+                                                text: "Check now";
+                                                style: "tonal";
+                                                clicked => {
+                                                    root.check-updates();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if root.category == 4: VerticalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+                                    SectionTitle {
+                                        text: "MCP access";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: true;
+                                            label: "MCP access";
+                                            hint: mcp-index == 0 ? "Every agent request is refused." : mcp-index == 1 ? "Agents can read apps and runs. RunBay asks before an agent runs, stops, or changes anything." : "Agents can run, stop, and change apps and actions without asking.";
+                                            ComboBox {
+                                                width: 200px;
+                                                model: ["Off", "Ask first", "Unrestricted"];
+                                                current-index <=> mcp-index;
+                                                selected => {
+                                                    root.changed();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    SectionTitle {
+                                        text: "Setup";
+                                    }
+                                    SegmentedList {
+                                        ListItem {
+                                            first: true;
+                                            last: true;
+                                            label: "MCP setup";
+                                            hint: "Copy setup instructions to paste into your coding agent.";
+                                            PillButton {
+                                                text: "Copy MCP setup instructions";
+                                                style: "tonal";
+                                                clicked => {
+                                                    SettingsBridge.copy-mcp-setup();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1;
                             }
                         }
                     }
@@ -967,6 +1217,7 @@ export component HistoryFlyout inherits Rectangle {
     callback close();
     close() => { HistoryBridge.close(); }
 
+    property <int> row-focus: -1;
     background: Theme.surface-container-low;
     border-radius: Theme.corner-large;
     TouchArea { }
@@ -1004,15 +1255,26 @@ export component HistoryFlyout inherits Rectangle {
         }
         HorizontalLayout {
             spacing: 6px;
-            ComboBox {
-                model: ["All statuses", "Running", "Success", "Failed", "Stopped"];
-                current-index <=> status-filter;
-                selected => { root.filters-changed(); }
+            alignment: start;
+            for title[index] in ["Running", "Success", "Failed", "Stopped"]: FilterChip {
+                text: title;
+                selected: root.status-filter == index + 1;
+                clicked => {
+                    root.status-filter = root.status-filter == index + 1 ? 0 : index + 1;
+                    root.filters-changed();
+                }
             }
-            ComboBox {
-                model: ["All sources", "Clicks", "Agents"];
-                current-index <=> source-filter;
-                selected => { root.filters-changed(); }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            for title[index] in ["Clicks", "Agents"]: FilterChip {
+                text: title;
+                selected: root.source-filter == index + 1;
+                clicked => {
+                    root.source-filter = root.source-filter == index + 1 ? 0 : index + 1;
+                    root.filters-changed();
+                }
             }
         }
         if rows.length == 0: Text {
@@ -1020,9 +1282,24 @@ export component HistoryFlyout inherits Rectangle {
             color: Theme.on-surface-variant;
             horizontal-alignment: center;
         }
-        ListView {
+        history-list := ListView {
             vertical-stretch: 1;
-            for row in rows: Rectangle {
+            for row[index] in rows: KeyboardRow {
+                focus-request: root.row-focus == index;
+                accessible-label: row.title + " " + row.status;
+                activated => { root.open-run(row.run-id); }
+                moved(delta) => {
+                    root.row-focus = clamp(index + delta, 0, root.rows.length - 1);
+                    root.open-run(root.rows[root.row-focus].run-id);
+                }
+                changed focus-request => {
+                    if self.focus-request {
+                        if self.y + history-list.content-y < 0px { history-list.content-y = -self.y; }
+                        if self.y + self.height + history-list.content-y > history-list.visible-height {
+                            history-list.content-y = history-list.visible-height - self.y - self.height;
+                        }
+                    }
+                }
                 height: row-layout.preferred-height;
                 border-radius: Theme.corner-medium;
                 background: row.selected ? Theme.secondary-container

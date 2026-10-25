@@ -353,7 +353,7 @@ restored only after its native frame has been initialized.
 - **Output**: output of the selected run (live while running). Multiple active
   runs are shown as tabs.
 - Action controls use consistently sized, centered icon-only buttons with action
-  name tooltips (32 px square in Full, 30 px in Compact/Icon). More is a 32 px
+  name tooltips (32 px square in Full, Compact, and Icon). More is a 32 px
   circular icon button; it never stretches to fill the card header.
 - Standard and custom actions share the same direct icon bar, in configured
   order. Deleted actions leave no placeholder buttons. When the available width
@@ -370,7 +370,13 @@ restored only after its native frame has been initialized.
   switches; shrinking the window temporarily clamps it to the available space.
 - **Action History** (right flyout, opened with the *Action History* button):
   runs from every app's `history/index.jsonl`, newest first, filterable by
-  app/action/status. Selecting an entry opens its log in the Output panel.
+  app/action/status/source. The panel reserves 400 px, including 12 px outer
+  insets. App/action dropdowns share one row. Status chips (Running, Success,
+  Failed, Stopped) and source chips (Clicks, Agents) use separate rows. Each row
+  permits one selected chip; no selection means all, and clicking the selected
+  chip clears it. Selected chips show an 18 px check. Internal indices retain
+  0 = all and the existing status/source order. Selecting an entry opens its log
+  in Output; Up/Down selects and focuses adjacent entries.
 - App menu: Edit, Move up, Move down, Open working directory, Open app data
   folder, Remove. (*Duplicate* is not in v1.)
 - **Version**: the RunBay version (e.g. `RunBay 1.0.0-alpha.1`) is always
@@ -395,6 +401,7 @@ controls even with a connected-agent indicator.
   including custom actions. The same width-based overflow menu as Full is used.
 - A Stop icon appears directly in each app row while it has active actions,
   stopping all active runs of that app without opening its output popup.
+- Action and Stop targets are 32 px square, shared with the Icon popup.
 - **Message icon per app**: opens a popup with the output of that app's last
   run, live while running, with Stop and Open in Full buttons. Its output uses
   the same selection, copying, and follow-mode controls as Full (§5.3), with the
@@ -419,6 +426,7 @@ controls even with a connected-agent indicator.
   snackbars are a separate small frameless window next to the icon; the icon
   and that window do not appear in the taskbar.
 - The aggregated badge is shown in a corner of the icon.
+- Action and Stop targets in the popup are 32 px square, matching Compact.
 - The message icon opens the same selectable output popup as Compact (§5.3).
 - Right-click: switch mode, always on top, icon size, Copy MCP setup instructions
   (§15.1), exit.
@@ -458,6 +466,39 @@ Startup & data, Action defaults, Updates, and Agents. Each setting keeps its
 label, explanation, and controls together. The header explains that changes are
 saved automatically. Action defaults explicitly apply only to newly created
 actions; existing actions are edited in the app editor.
+
+The page heading is title-large; category headings are title-medium. Content is
+left-aligned in a column no wider than 720 px. Navigation uses 48 px pill
+indicators; Tab traverses controls and Up/Down selects adjacent categories.
+Each titled group is an Expressive segmented list: 2 px gaps, 16 px outer
+corners, 4 px inner corners, surface-colored items, 16 px horizontal insets,
+body-large labels and optional body-small hints. Density -2 minimum heights
+are 48 px for one line and 64 px for two lines; items grow to fit controls and
+wrapped hints. Controls trail labels, moving below them under 480 px.
+
+Groups by category:
+
+- Appearance: Theme (application and console), Floating window (icon size and
+  Compact/Icon always-on-top), Taskbar (Full/Compact), Output (line limit).
+- Startup & data: Startup (Load with Windows), Data (custom folder and chooser).
+- Action defaults: Running (when still running), History retention (Build, Run,
+  Build + Run, Custom).
+- Updates: Automatic updates (switch with status hint), Manual check (separate
+  item with a tonal Check now button).
+- Agents: MCP access (selector and the explanation in §15.2), Setup (copy setup).
+
+Retention in Settings and the editor uses a connected button group with
+Off / Last N / Forever. Only Last N shows a count field followed by "runs";
+there is no clear button. Stored values, parsing and retention semantics stay
+unchanged. Text fields use a 48 px outlined TextInput wrapper with 4 px corners
+and primary focus outlines; dropdowns retain Slint material's native height.
+The wrapper supports editing, selection, clipboard shortcuts, horizontal
+scrolling and an editing context menu.
+
+The app editor keeps three columns with section titles and FieldLabel labels.
+Action details have Script, Environment, and Behavior sections; Behavior holds
+working directory, when-running and retention. Save is filled, Cancel is text,
+Choose/Image/folder controls are tonal, and Remove/Add variable are text buttons.
 
 The Full navigation header has a single theme button at the right of the RunBay
 title. Clicking cycles **System → Light → Dark → System**, saves the choice, and
@@ -570,6 +611,26 @@ overload rendering.
   Unselected switches use surface-container-highest with outline borders/thumbs.
 - Expressive motion: short spring transitions for the Action History flyout, the
   icon popup, and badge changes; no animation while idle.
+- Density -2 gives lists 48/64 px one/two-line minimums, navigation 48 px and
+  outlined fields 48 px. Pill buttons stay 40 px; switches retain 52×32 px tracks
+  and 16/24 px handles. Segmented lists follow the metrics in §8.
+- Filter chips are 32 px high with 8 px corners, 1 px outline-variant borders
+  and on-surface-variant labels. Selection uses secondary-container /
+  on-secondary-container, no border, and an 18 px check.
+- Small connected button groups are 40 px high with 2 px gaps, full outer
+  corners and 8 px inner corners; selected segments become pills. Deprecated
+  segmented buttons are not used.
+- Keyboard focus uses a 3 px secondary ring at a 2 px outer offset, following
+  the control shape; list rows use an inward -3 px offset. Shared buttons,
+  switches, chips, connected segments, Settings navigation, editor action rows
+  and History rows support Tab/Shift+Tab and Enter/Space. Mouse activation does
+  not acquire focus on these controls. Secondary/on-secondary are
+  #625b71/#ffffff in Light and #ccc2dc/#332d41 in Dark. The shape scale is
+  4/8/12/16/20/28/32/48/full.
+- Navigation position, chip/segment selection and focus opacity animate only
+  on interaction with motion-fast (120 ms): ease-out for color/position/focus
+  and ease-out-back for connected shapes. The Full console toolbar starts
+  12 px below the 36 px caption, exceeding its 8 px minimum.
 - Full caption buttons are 46×36 px with 16 px Material Symbols Rounded icons
   (Minimize, Maximize/Restore, Close). Compact caption controls use the existing
   32 px SymbolButton style. Icons use `on-surface-variant`; hover/press use the
@@ -775,6 +836,13 @@ A setting **MCP access** in the GUI decides what agents may do:
 | **Off** | Every tool call fails with "MCP access is turned off in RunBay". |
 | **Ask first** (default) | Read-only tools run directly. Every tool that runs, stops, or changes something shows a confirmation dialog in RunBay. |
 | **Unrestricted** | All tools run without confirmation. |
+
+The Settings selector explains the selected access level:
+
+- Off: "Every agent request is refused."
+- Ask first: "Agents can read apps and runs. RunBay asks before an agent runs,
+  stops, or changes anything."
+- Unrestricted: "Agents can run, stop, and change apps and actions without asking."
 
 Confirmation dialog (shown in the Full window, which is brought to the front
 for the dialog also while Compact or Icon mode is active and hidden again after

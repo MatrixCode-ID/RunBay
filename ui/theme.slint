@@ -13,6 +13,8 @@ export global Theme {
     out property <color> on-primary: dark ? #381e72 : #ffffff;
     out property <color> primary-container: dark ? #4f378b : #eaddff;
     out property <color> on-primary-container: dark ? #eaddff : #21005d;
+    out property <color> secondary: dark ? #ccc2dc : #625b71;
+    out property <color> on-secondary: dark ? #332d41 : #ffffff;
     out property <color> secondary-container: dark ? #4a4458 : #e8def8;
     out property <color> on-secondary-container: dark ? #e8def8 : #1d192b;
     out property <color> tertiary: dark ? #efb8c8 : #7d5260;
@@ -62,6 +64,13 @@ export global Theme {
     out property <length> label-small: 11px;
 
     // Shapes (Expressive: large corners).
+    out property <length> corner-extra-small: 4px;
+    out property <length> corner-large-increased: 20px;
+    out property <length> corner-extra-large-increased: 32px;
+    out property <length> corner-extra-extra-large: 48px;
+    out property <length> corner-full: 9999px;
+    out property <length> focus-thickness: 3px;
+    out property <length> focus-offset: 2px;
     out property <length> corner-small: 8px;
     out property <length> corner-medium: 12px;
     out property <length> corner-large: 16px;
@@ -74,6 +83,7 @@ export global Theme {
 
 // Material Symbols Rounded (Apache-2.0); outlined for idle states, *-fill for active ones.
 export global Icons {
+    out property <image> check: @image-url("icons/check.svg");
     out property <image> light-mode: @image-url("icons/light_mode.svg");
     out property <image> dark-mode: @image-url("icons/dark_mode.svg");
     out property <image> system-theme: @image-url("icons/brightness_auto.svg");

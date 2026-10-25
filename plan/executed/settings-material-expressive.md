@@ -1,7 +1,7 @@
 # Plan: Material 3 Expressive pass for Settings, History, the app editor, and keyboard focus
 
 - **Date:** 2026-10-25
-- **Status:** not executed
+- **Status:** executed (2026-10-25)
 - **Idea:** [doc/ideas/settings-material-expressive.md](../../doc/ideas/settings-material-expressive.md)
 - **Specification:** §6.1 (Full, Action History), §6.2 (Compact), §8 (Settings),
   §12 (design language).
@@ -135,4 +135,77 @@ what settings or filters do.
 
 ## 7. Execution report
 
-_To be filled in by the executor._
+Implemented the steps in §4 with RunBay's own components and no dependency
+changes. Settings now uses the specified groups, responsive list items,
+720px content limit, heading hierarchy, navigation, retention controls, and
+selection-dependent MCP explanations. History uses chip filters and reserves
+400px including the existing 12px outer insets (376px card, 352px content).
+The editor retains three columns with Script, Environment, and Behavior sections.
+Compact/Icon action bars and their app Stop targets are 32px; other icon-button
+sizes are preserved.
+
+### Measurements and input choice
+
+Measurements use logical pixels at density -2. Source inspection of the locked
+Slint 1.18.1 material definitions gives:
+
+| Control | Native layout | Applied approach |
+| --- | --- | --- |
+| LineEdit | minimum `max(56px, layout.min-height)` = 56px for normal single-line text | 48px TextInput-based TextField, 4px corners, 1px outline, 2px primary focused outline |
+| ComboBox | minimum `max(22px, layout.min-height)`; the 24px arrow sets the normal 24px height | Native material ComboBox, unchanged |
+
+The native LineEdit also unconditionally inserts a clear icon for nonempty,
+enabled editable text, with no public option to suppress it. A height override
+alone therefore cannot satisfy the retention field's no-clear requirement
+cleanly. The specified TextField fallback is used for all former LineEdit uses
+in Settings/editor, including environment variables. It retains native
+TextInput editing/selection, clipboard shortcuts, a context menu, and horizontal
+cursor scrolling. Retention count fields appear only for Last N, with "runs".
+
+The Full caption ends at y=36px. Without run tabs, toolbar buttons start at
+y=48px: **12px clearance** from the toolbar's existing top padding. With tabs,
+clearance is larger. No spacing adjustment was needed.
+
+### Keyboard, behavior, and verification
+
+Shared buttons, switches, chips, connected segments, navigation, editor action
+rows, and History rows have keyboard focus. Up/Down selects adjacent Settings
+categories and History entries; History scrolls the focused entry into view.
+Mouse activation does not explicitly acquire focus. The covered Full layout is
+hidden while Settings/editor is open so Tab cannot visit obscured controls.
+This is a necessary focus containment detail not explicitly described in §3.
+List items grow beyond their 48/64px minimums when fields or wrapped hints need
+more room. No idle animation or new timer was introduced.
+
+No Rust wiring change was needed: `parse_retention`, retention persistence,
+setting callbacks, and every filter index in `src/ui/history.rs` are unchanged.
+The specification (§§6.1, 6.2, 6.3, 8, 12, 15.2) and alpha.7 candidate were updated.
+The existing offscreen test was adapted to the new layout and keyboard-only
+focus acquisition. A new offscreen integration test checks chip indices,
+selected-chip clearing, visible keyboard focus, and History arrow selection.
+These tests dispatch into software windows and never use desktop input/focus.
+
+All checks use the existing RunBay app for the repository. Two supplementary
+actions were registered: **Check Slint compilation** (`ui-compile`) and
+**Offscreen Material interaction checks** (`material-check`); existing actions
+were reused for format, full checks, and the release build. No shell fallback.
+
+| RunBay run | Action and result |
+| --- | --- |
+| `20261025-115755-ui-compile-ce4f` | Initial component compilation; exposed invalid parent references, corrected |
+| `20261025-115845-ui-compile-1859` | Compilation; exposed clipping/layout constraints, corrected |
+| `20261025-115931-ui-compile-8c29` | Component compilation passed |
+| `20261025-120110-check-177a` | fmt/clippy passed; old GUI focus expectation failed and was updated |
+| `20261025-120431-fmt-00cd` | Formatter passed |
+| `20261025-120432-material-check-d2d6` | Test helper return-type compile error, corrected |
+| `20261025-120536-fmt-cf74` | Formatter passed |
+| `20261025-120536-material-check-b297` | Offscreen interaction and chrome tests passed |
+| `20261025-120613-check-a4d5` | fmt check, clippy all targets with warnings denied, and all tests passed |
+| `20261025-120754-build-44be` | Checks passed; release build failed because the artifact drive ran out of space |
+| `20261025-121108-clean-incremental-af70` | Existing incremental-cache cleanup action passed, recovering about 14GB |
+| `20261025-121158-build-2ea9` | Final-source fmt check, clippy with warnings denied, all tests, release build, and local artifact packaging passed |
+
+Final visual validation remains with the user: complete §5 in Light and Dark,
+including narrow Settings, retention persistence after restart, editor layout,
+keyboard activation in all modes, selected chips, and idle CPU/GPU behavior.
+No files in `doc/Report/` were read, changed, staged, or moved. No push is made.

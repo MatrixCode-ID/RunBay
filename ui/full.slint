@@ -324,6 +324,7 @@ export component MainWindow inherits Window {
     }
 
     HorizontalLayout {
+        visible: root.page == "";
         y: root.caption-height;
         height: parent.height - root.caption-height;
         // Navigation.
@@ -627,13 +628,13 @@ export component MainWindow inherits Window {
             Rectangle { height: 12px; }
         }
         history-panel := Rectangle {
-            width: history-open ? 372px : 12px;
+            width: history-open ? 400px : 12px;
             animate width { duration: Theme.motion-medium; easing: ease-out-back; }
             clip: true;
             if history-open: HistoryFlyout {
                 x: 12px;
                 y: 12px;
-                width: 348px;
+                width: 376px;
                 height: parent.height - 24px;
                 close => { root.toggle-history(); }
             }
