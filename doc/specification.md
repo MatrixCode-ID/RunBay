@@ -266,6 +266,11 @@ Different apps may always run in parallel.
 - When output overflows horizontally, a dedicated 20 px scrollbar lane sits
   below the text viewport in Full and Compact/Icon output views. Its whole
   height accepts dragging, uses an arrow cursor, and never starts text selection.
+- When output overflows vertically, a dedicated 20 px scrollbar lane sits to
+  the right of the text viewport in Full and Compact/Icon output views. Its
+  whole width accepts dragging, uses an arrow cursor, and never starts text
+  selection. The visible thumb is at least 32 px tall; dragging continues even
+  when the pointer leaves the lane.
 - Copying a selection strips ANSI codes and joins lines with `\r\n`; an end
   position at column zero excludes that empty final line. Selection positions
   use stable run-line indices and character columns, clamped when the ring

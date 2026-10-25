@@ -65,6 +65,45 @@ fn click(window: &MinimalSoftwareWindow, x: f32, y: f32) {
     }
 }
 
+fn check_vertical_scrollbar(
+    window: &MinimalSoftwareWindow,
+    bridge: OutputBridge,
+    lane_right: f32,
+    name: &str,
+) {
+    let selection_events = Rc::new(Cell::new(0));
+    let calls = selection_events.clone();
+    bridge.on_selection_event(move |_, _, _, _, _| calls.set(calls.get() + 1));
+    let top = slint::Color::from_rgb_u8(20, 180, 90);
+    let bottom = slint::Color::from_rgb_u8(210, 40, 180);
+    for inset in [19.0, 10.0, 1.0] {
+        // Grab both edges of the lane, outside the visible thumb, and keep
+        // dragging after leaving the lane horizontally and vertically.
+        let x = lane_right - inset;
+        window.dispatch_event(WindowEvent::PointerPressed {
+            position: slint::LogicalPosition::new(x, 280.0),
+            button: PointerEventButton::Left,
+        });
+        window.dispatch_event(WindowEvent::PointerMoved {
+            position: slint::LogicalPosition::new(x - 40.0, -2000.0),
+        });
+        let pixels = render(window, &format!("{name}-vertical-top-{inset}"));
+        assert!(color_count(&pixels, top) > 5, "{name} lane inset {inset}");
+        assert_eq!(color_count(&pixels, bottom), 0, "{name} must reach top");
+        window.dispatch_event(WindowEvent::PointerMoved {
+            position: slint::LogicalPosition::new(x + 40.0, 2000.0),
+        });
+        window.dispatch_event(WindowEvent::PointerReleased {
+            position: slint::LogicalPosition::new(x + 40.0, 2000.0),
+            button: PointerEventButton::Left,
+        });
+        let pixels = render(window, &format!("{name}-vertical-bottom-{inset}"));
+        assert!(color_count(&pixels, bottom) > 5, "{name} must reach bottom");
+        assert_eq!(color_count(&pixels, top), 0);
+        assert_eq!(selection_events.get(), 0, "{name} must not select text");
+    }
+}
+
 #[test]
 fn console_palettes_render_independently_in_full_and_output_popups() {
     let windows = Rc::new(RefCell::new(Vec::new()));
@@ -212,5 +251,57 @@ fn console_palettes_render_independently_in_full_and_output_popups() {
         bridge.on_cycle_console_theme(move || count.set(count.get() + 1));
         click(window, x, y);
         assert_eq!(clicks.get(), 1, "console theme button must be clickable");
+    }
+
+    let scroll_rows = ModelRc::new(VecModel::from(
+        (0..200)
+            .map(|i| {
+                let color = if i < 100 {
+                    slint::Color::from_rgb_u8(20, 180, 90)
+                } else {
+                    slint::Color::from_rgb_u8(210, 40, 180)
+                };
+                OutputRow {
+                    spans: ModelRc::new(VecModel::from(vec![Span {
+                        text: format!("Scrollbar row {i}").into(),
+                        color,
+                        dark_color: color,
+                        colored: true,
+                        ..Span::default()
+                    }])),
+                    ..OutputRow::default()
+                }
+            })
+            .collect::<Vec<_>>(),
+    ));
+    full.set_output(scroll_rows.clone());
+    // Exercise vertical dragging both with and without horizontal overflow.
+    for columns in [18, 1000] {
+        full.set_output_columns(columns);
+        render(&full_window, "vertical-scrollbar-layout");
+        full.invoke_scroll_to_end();
+        render(&full_window, "vertical-scrollbar-start");
+        check_vertical_scrollbar(&full_window, full.global::<OutputBridge>(), 1088.0, "full");
+    }
+    for (window, bridge, output_bridge, lane_right, name) in [
+        (
+            &compact_window,
+            compact.global::<MiniBridge>(),
+            compact.global::<OutputBridge>(),
+            344.0,
+            "compact",
+        ),
+        (
+            &icon_window,
+            icon_popup.global::<MiniBridge>(),
+            icon_popup.global::<OutputBridge>(),
+            294.0,
+            "icon",
+        ),
+    ] {
+        bridge.set_output(scroll_rows.clone());
+        bridge.set_output_columns(1000);
+        render(window, &format!("{name}-vertical-layout"));
+        check_vertical_scrollbar(window, output_bridge, lane_right, name);
     }
 }

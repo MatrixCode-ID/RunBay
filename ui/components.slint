@@ -721,6 +721,7 @@ export component OutputView inherits Rectangle {
     property <int> focus-row: popup ? OutputBridge.popup-focus : OutputBridge.full-focus;
     property <length> char-width: max(1px, measure.preferred-width);
     property <bool> horizontal-overflow: columns * char-width + 2 * side-padding > list.visible-width;
+    property <bool> vertical-overflow: list.content-height > list.visible-height;
     forward-focus: keys;
     clip: true;
 
@@ -774,8 +775,12 @@ export component OutputView inherits Rectangle {
         font-size: root.font-size;
     }
     list := ListView {
+        // Material ListView already reserves 12 px, even with its bars hidden.
+        // Keep a stable 20 px gutter so overflow never changes the text width.
+        width: root.width - 8px;
         height: root.height - (root.horizontal-overflow ? 20px : 0px);
         horizontal-scrollbar-policy: always-off;
+        vertical-scrollbar-policy: always-off;
         content-width: max(self.visible-width, root.columns * root.char-width + 2 * root.side-padding);
         for row in root.rows: Rectangle {
             height: root.row-height;
@@ -866,7 +871,46 @@ export component OutputView inherits Rectangle {
             }
         }
     }
-    // A dedicated lane keeps the entire drag target outside text selection.
+    // Dedicated lanes keep the entire drag targets outside text selection.
+    vertical-bar := Rectangle {
+        visible: root.vertical-overflow;
+        x: root.width - self.width;
+        width: 20px;
+        height: list.visible-height;
+        background: Theme.console-text.with-alpha(0.06);
+        property <length> maximum: max(0px, list.content-height - list.visible-height);
+        property <length> thumb-height: min(self.height, max(32px, self.height * list.visible-height / max(1px, list.content-height)));
+        Rectangle {
+            x: 6px;
+            y: vertical-bar.maximum > 0px ? -list.content-y / vertical-bar.maximum * (parent.height - self.height) : 0px;
+            width: 8px;
+            height: vertical-bar.thumb-height;
+            border-radius: 4px;
+            background: Theme.console-text.with-alpha(vertical-touch.pressed ? 0.65 : vertical-touch.has-hover ? 0.5 : 0.35);
+        }
+        vertical-touch := TouchArea {
+            property <length> start-y;
+            property <length> start-offset;
+            mouse-cursor: default;
+            pointer-event(event) => {
+                if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                    self.start-y = self.mouse-y;
+                    self.start-offset = list.content-y;
+                }
+            }
+            moved => {
+                if self.pressed {
+                    list.content-y = clamp(self.start-offset - (self.mouse-y - self.start-y)
+                        * vertical-bar.maximum / max(1px, vertical-bar.height - vertical-bar.thumb-height),
+                        -vertical-bar.maximum, 0px);
+                }
+            }
+            scroll-event(event) => {
+                list.content-y = clamp(list.content-y + event.delta-y, -vertical-bar.maximum, 0px);
+                return accept;
+            }
+        }
+    }
     horizontal-bar := Rectangle {
         visible: root.horizontal-overflow;
         y: list.height;
